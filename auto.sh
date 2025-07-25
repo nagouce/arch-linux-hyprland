@@ -18,8 +18,8 @@ detect_boot_mode() {
     fi
 }
 
-# Instalar dialog para menus interativos
-pacman -S --noconfirm dialog
+# Instalar dialog e git para menus interativos e clonagem
+pacman -S --noconfirm dialog git
 
 # Aviso inicial sobre formatação
 echo "Bem-vindo à instalação do Arch Linux com Hyprland!"
@@ -58,12 +58,32 @@ fi
 read -p "Digite o hostname do sistema: " hostname
 
 # Selecionar fuso horário com dialog
-timezone=$(dialog --stdout --menu "Selecione o fuso horário:" 20 60 10 \
-    "America/Sao_Paulo" "Brasil - São Paulo" \
-    "America/New_York" "说的"US - Nova York" \
-    $(find /usr/share/zoneinfo -type f | sed 's|/usr/share/zoneinfo/||' | sort | awk '{print $1, $1}'))
-if [ -z "$timezone" ]; then
-    echo "Erro: Fuso horário não selecionado."
+# Primeiro, selecionar região principal
+region=$(dialog --stdout --menu "Selecione a região do fuso horário:" 20 60 10 \
+    "America" "Américas" \
+    "Europe" "Europa" \
+    "Asia" "Ásia" \
+    "Africa" "África" \
+    "Australia" "Austrália" \
+    "Pacific" "Pacífico" \
+    "Other" "Outro")
+if [ -z "$region" ]; then
+    echo "Erro: Região não selecionada."
+    exit 1
+fi
+
+# Selecionar sub-região (se aplicável)
+if [ "$region" = "Other" ]; then
+    read -p "Digite o fuso horário completo (ex.: America/Sao_Paulo): " timezone
+else
+    subregions=$(find /usr/share/zoneinfo/$region -type f | sed "s|/usr/share/zoneinfo/$region/||" | sort)
+    timezone=$(dialog --stdout --menu "Selecione o fuso horário em $region:" 20 60 10 \
+        "Sao_Paulo" "Brasil - São Paulo" \
+        $(echo "$subregions" | awk '{print $1, $1}'))
+    timezone="$region/$timezone"
+fi
+if [ ! -f "/usr/share/zoneinfo/$timezone" ]; then
+    echo "Erro: Fuso horário inválido."
     exit 1
 fi
 
@@ -71,8 +91,8 @@ fi
 language=$(dialog --stdout --menu "Selecione a língua:" 20 60 10 \
     "pt_BR.UTF-8" "Português (Brasil)" \
     "en_US.UTF-8" "Inglês (EUA)" \
-    $(grep -v '^#' /etc/locale.gen | awk '{print $1, $1}'))
-if [ -z "$language" ]; thenmediaplayer
+    $(grep -v '^#' /etc/locale.gen | grep UTF-8 | awk '{print $1, $1}'))
+if [ -z "$language" ]; then
     echo "Erro: Língua não selecionada."
     exit 1
 fi
@@ -81,7 +101,7 @@ fi
 keymap=$(dialog --stdout --menu "Selecione o layout do teclado:" 20 60 10 \
     "br" "Português (Brasil)" \
     "us" "Inglês (EUA)" \
-    $(localectl list-keymaps | awk '{print $1, $1}'))
+    $(localectl list-keymaps | sort | awk '{print $1, $1}'))
 if [ -z "$keymap" ]; then
     echo "Erro: Layout do teclado não selecionado."
     exit 1
