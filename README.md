@@ -1,33 +1,33 @@
-# ⚙️ Arch Linux Instalador Automatizado — por @nagouce
+# Arch Linux Instalador Automatizado
 
-Este repositório instala o Arch Linux com **particionamento automático**, configurações completas e pacotes úteis, tudo com um script só.
+Script interativo para instalar o Arch Linux com Hyprland, otimizado para programação, desenvolvimento, IA e acesso a bancos de dados.
 
-## ✅ Configurações aplicadas:
+## ✨ Funcionalidades
+- **Particionamento automático**:
+  - `/boot`: 512 MiB (FAT32, EFI)
+  - `swap`: 4 GiB
+  - `/`: 50 GiB (ext4)
+  - `/home`: Resto do disco (ext4)
+- **Kernel**: `linux-zen`
+- **Interface**: Hyprland (Wayland) com SDDM
+- **Pacotes**: Ferramentas de desenvolvimento, bancos de dados, IA, Bluetooth (veja `pacotes.txt`)
+- **Configurações interativas**:
+  - Seleção de disco com confirmação de formatação.
+  - Escolha de usuário, senha, hostname, fuso horário, língua e teclado via menus.
+- **Detecção de hardware**: Drivers gráficos (NVIDIA, Intel, AMD) instalados automaticamente.
+- **Suporte UEFI/BIOS**: GRUB configurado conforme o modo de boot.
+- **Integração com celular**: Bluetooth e KDE Connect para áudio e transferência de arquivos.
 
-- **Usuário**: `nagouce`  
-- **Senha**: `0247`  
-- **Hostname**: `Sociedade Secreta`  
-- **Partições**:  
-  - `/boot` → 512 MiB (FAT32)  
-  - `swap` → 4 GiB  
-  - `/` → 50 GiB (ext4)  
-  - `/home` → resto do disco (ext4)
+## ⚠️ Aviso
+- **Apaga todos os dados no disco selecionado. Faça backup!**
+- Requer internet.
 
-- **Kernel**: `linux-zen`  
-- **Interface**: `Hyprland` + `Wayland`  
-- **Pacotes**: dev tools, áudio, Bluetooth, Docker, Samsung tweaks
-
-## 🚀 Como usar:
-
-1. Dê o **boot do Arch Live ISO**
-2. Conecte à internet (cabo ou Wi‑Fi via `nmtui`)
+## 🚀 Como usar
+1. Inicie o Arch Linux Live ISO.
+2. Conecte-se à internet (`nmtui` para Wi-Fi).
 3. Execute:
-
-```bash
-git clone https://github.com/nagouce/arch-setup-auto.git
-cd arch-setup-auto
-chmod +x auto.sh
-./auto.sh
-```
-
-Depois do reboot, é só logar como `nagouce` (senha `0247`) e usar o sistema pronto.
+   ```bash
+   git clone https://github.com/nagouce/arch-linux-hyprland.git
+   cd arch-linux-hyprland
+   chmod +x auto.sh
+   ./auto.sh
