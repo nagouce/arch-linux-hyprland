@@ -18,8 +18,17 @@ detect_boot_mode() {
     fi
 }
 
+# Função para verificar erros
+check_error() {
+    if [ $? -ne 0 ]; then
+        echo "Erro: $1"
+        exit 1
+    fi
+}
+
 # Instalar dialog e git para menus interativos e clonagem
 pacman -S --noconfirm dialog git
+check_error "Falha ao instalar dialog e git"
 
 # Aviso inicial sobre formatação
 echo "Bem-vindo à instalação do Arch Linux com Hyprland!"
@@ -58,7 +67,6 @@ fi
 read -p "Digite o hostname do sistema: " hostname
 
 # Selecionar fuso horário com dialog
-# Primeiro, selecionar região principal
 region=$(dialog --stdout --menu "Selecione a região do fuso horário:" 20 60 10 \
     "America" "Américas" \
     "Europe" "Europa" \
@@ -72,7 +80,6 @@ if [ -z "$region" ]; then
     exit 1
 fi
 
-# Selecionar sub-região (se aplicável)
 if [ "$region" = "Other" ]; then
     read -p "Digite o fuso horário completo (ex.: America/Sao_Paulo): " timezone
 else
@@ -109,6 +116,7 @@ fi
 
 # Detectar modo de boot
 detect_boot_mode
+echo "Modo de boot detectado: $BOOT_MODE"
 
 # Iniciar log
 exec 1> >(tee -a /tmp/install.log)
@@ -118,6 +126,13 @@ echo "Iniciando instalação em $(date)"
 echo "[1/9] → Verificando pré-requisitos..."
 check_internet
 
+# Atualizar lista de espelhos
+echo "Atualizando lista de espelhos..."
+pacman -Syy reflector
+reflector --country Brazil --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
+pacman -Syy
+check_error "Falha ao atualizar repositórios"
+
 echo "[2/9] → Particionando $disk..."
 sgdisk --zap-all "$disk"
 parted -s "$disk" mklabel gpt
@@ -126,36 +141,49 @@ parted -s "$disk" set 1 esp on
 parted -s "$disk" mkpart linux-swap 513MiB 4609MiB
 parted -s "$disk" mkpart primary ext4 4609MiB 56337MiB
 parted -s "$disk" mkpart primary ext4 56337MiB 100%
+check_error "Falha ao particionar o disco"
+
+echo "[3/9] → Formatando partições..."
 mkfs.fat -F32 "${disk}1"
 mkswap "${disk}2"
 swapon "${disk}2"
 mkfs.ext4 "${disk}3"
 mkfs.ext4 "${disk}4"
+check_error "Falha ao formatar partições"
 
-echo "[3/9] → Montando partições..."
+echo "[4/9] → Montando partições..."
 mount "${disk}3" /mnt
 mkdir -p /mnt/{boot,home}
 mount "${disk}1" /mnt/boot
 mount "${disk}4" /mnt/home
+check_error "Falha ao montar partições"
 
-echo "[4/9] → Instalando base..."
-pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano grub efibootmgr systemd-timesyncd
+echo "[5/9] → Instalando base..."
+pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano \
+    grub efibootmgr hyprland xdg-desktop-portal-hyprland kitty waybar rofi \
+    swaylock-effects swww polkit-gnome pipewire pipewire-alsa pipewire-pulse \
+    wireplumber pavucontrol brightnessctl bluez bluez-utils network-manager-applet \
+    thunar ttf-jetbrains-mono-nerd noto-fonts-emoji sddm kde-connect
+check_error "Falha ao instalar pacotes base"
 
-echo "[5/9] → Gerando /etc/fstab..."
+echo "[6/9] → Gerando /etc/fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
+check_error "Falha ao gerar fstab"
 
-echo "[6/9] → Configurando sistema..."
+echo "[7/9] → Configurando sistema..."
 arch-chroot /mnt /bin/bash <<EOF
 set -e
 
+# Configurar fuso horário
 ln -sf /usr/share/zoneinfo/$timezone /etc/localtime
 hwclock --systohc
-systemctl enable systemd-timesyncd
 
+# Configurar locale
 sed -i "s/^#$language/$language/" /etc/locale.gen
 locale-gen
 echo "LANG=$language" > /etc/locale.conf
 
+# Configurar hostname
 echo "$hostname" > /etc/hostname
 cat <<HOSTS > /etc/hosts
 127.0.0.1 localhost
@@ -163,12 +191,19 @@ cat <<HOSTS > /etc/hosts
 127.0.1.1 $hostname.localdomain $hostname
 HOSTS
 
+# Configurar root e usuário
 echo "root:$pass" | chpasswd
 useradd -m -G wheel,docker,video,audio,input "$user"
 echo "$user:$pass" | chpasswd
 echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel
 
-# Instalar GRUB conforme modo de boot
+# Configurar layout do teclado
+echo "KEYMAP=$keymap" > /etc/vconsole.conf
+mkdir -p /home/$user/.config/hypr
+echo "input { kb_layout = $keymap }" > /home/$user/.config/hypr/hyprland.conf
+chown -R $user:$user /home/$user/.config
+
+# Instalar GRUB
 if [ "$BOOT_MODE" = "UEFI" ]; then
     grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
 else
@@ -176,23 +211,31 @@ else
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 
-# Configurar layout do teclado
-echo "KEYMAP=$keymap" > /etc/vconsole.conf
+# Habilitar serviços
+systemctl enable systemd-timesyncd
+systemctl enable NetworkManager
+systemctl enable bluetooth
+systemctl enable tlp
+systemctl enable docker
+systemctl enable sddm
+systemctl enable fstrim.timer
 
+# Instalar pacotes adicionais do repositório
 su - "$user" -c "
   git clone https://github.com/nagouce/arch-linux-hyprland.git ~/setup &&
   xargs -a ~/setup/pacotes.txt sudo pacman -S --noconfirm --needed &&
   mkdir -p ~/.config &&
   cp -r ~/setup/configs/* ~/.config/ || true
 "
-
-systemctl enable NetworkManager bluetooth tlp docker sddm
 EOF
+check_error "Falha ao configurar o sistema"
 
-echo "[7/9] → Verificando configurações de hardware..."
+echo "[8/9] → Verificando configurações de hardware..."
 if lspci | grep -i nvidia; then
     echo "GPU NVIDIA detectada. Instalando drivers..."
     pacstrap /mnt nvidia-dkms nvidia-utils libva-nvidia-driver
+    echo 'env = WLR_NO_HARDWARE_CURSORS,1' >> /mnt/home/$user/.config/hypr/hyprland.conf
+    echo 'env = WLR_DRM_DEVICES,/dev/dri/card0' >> /mnt/home/$user/.config/hypr/hyprland.conf
 elif lspci | grep -i intel; then
     echo "GPU Intel detectada. Instalando drivers..."
     pacstrap /mnt intel-media-driver vulkan-intel
@@ -200,8 +243,9 @@ elif lspci | grep -i amd; then
     echo "GPU AMD detectada. Instalando drivers..."
     pacstrap /mnt xf86-video-amdgpu vulkan-radeon
 fi
+check_error "Falha ao instalar drivers gráficos"
 
-echo "[8/9] → Instalação concluída."
-echo "[9/9] → Reiniciando em 10 segundos..."
+echo "[9/9] → Instalação concluída."
+echo "Reiniciando em 10 segundos..."
 sleep 10
 reboot
