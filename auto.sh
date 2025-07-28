@@ -26,9 +26,9 @@ check_error() {
     fi
 }
 
-# Instalar dialog e git para menus interativos e clonagem
+# Instalar dialog e git para menus interativos e clonagem no ambiente live
 pacman -S --noconfirm dialog git
-check_error "Falha ao instalar dialog e git"
+check_error "Falha ao instalar dialog e git no ambiente live"
 
 # Aviso inicial sobre formatação
 echo "Bem-vindo à instalação do Arch Linux com Hyprland!"
@@ -44,6 +44,10 @@ lsblk
 read -p "Digite o disco para particionamento (ex.: /dev/sda): " disk
 if [ ! -b "$disk" ]; then
     echo "Erro: Disco inválido."
+    exit 1
+fi
+if lsblk -dno RM "$disk" | grep -q 1; then
+    echo "Erro: Disco selecionado é removível. Escolha um disco interno."
     exit 1
 fi
 read -p "AVISO: Todos os dados em $disk serão apagados. Continuar? (s/n): " confirm
@@ -159,11 +163,16 @@ mount "${disk}4" /mnt/home
 check_error "Falha ao montar partições"
 
 echo "[5/9] → Instalando base..."
+# Pacotes do repositório oficial (excluindo code e postman, que são do AUR)
 pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano \
     grub efibootmgr hyprland xdg-desktop-portal-hyprland kitty waybar rofi \
-    swaylock-effects swww polkit-gnome pipewire pipewire-alsa pipewire-pulse \
-    wireplumber pavucontrol brightnessctl bluez bluez-utils network-manager-applet \
-    thunar ttf-jetbrains-mono-nerd noto-fonts-emoji sddm kde-connect
+    swaylock-effects swww polkit-gnome pipewire-audio wireplumber pavucontrol \
+    brightnessctl bluez bluez-utils blueman network-manager-applet thunar \
+    thunar-archive-plugin ttf-jetbrains-mono-nerd noto-fonts bash-completion \
+    btop clang curl dbeaver docker docker-compose dunst feh fwupd gcc go htop \
+    jupyterlab kdeconnect libinput lm_sensors make mariadb mesa mongodb neovim \
+    nginx nodejs npm openssh poetry postgresql python python-pip redis ripgrep \
+    rust sof-firmware starship tlp unzip virtualenv zip
 check_error "Falha ao instalar pacotes base"
 
 echo "[6/9] → Gerando /etc/fstab..."
@@ -220,10 +229,20 @@ systemctl enable docker
 systemctl enable sddm
 systemctl enable fstrim.timer
 
-# Instalar pacotes adicionais do repositório
+# Instalar yay para pacotes do AUR
+pacman -S base-devel git --noconfirm
+su - "$user" -c "
+  git clone https://aur.archlinux.org/yay.git /tmp/yay &&
+  cd /tmp/yay &&
+  makepkg -si --noconfirm
+"
+
+# Instalar pacotes do AUR (code, postman)
+su - "$user" -c "yay -S code postman --noconfirm --needed"
+
+# Copiar configurações do repositório
 su - "$user" -c "
   git clone https://github.com/nagouce/arch-linux-hyprland.git ~/setup &&
-  xargs -a ~/setup/pacotes.txt sudo pacman -S --noconfirm --needed &&
   mkdir -p ~/.config &&
   cp -r ~/setup/configs/* ~/.config/ || true
 "
@@ -231,6 +250,10 @@ EOF
 check_error "Falha ao configurar o sistema"
 
 echo "[8/9] → Verificando configurações de hardware..."
+if lscpu | grep -i intel; then
+    echo "CPU Intel detectada. Instalando intel-ucode..."
+    pacstrap /mnt intel-ucode
+fi
 if lspci | grep -i nvidia; then
     echo "GPU NVIDIA detectada. Instalando drivers..."
     pacstrap /mnt nvidia-dkms nvidia-utils libva-nvidia-driver
