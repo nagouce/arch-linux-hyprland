@@ -163,16 +163,15 @@ mount "${disk}4" /mnt/home
 check_error "Falha ao montar partições"
 
 echo "[5/9] → Instalando base..."
-# Pacotes do repositório oficial (excluindo code e postman, que são do AUR)
+# Pacotes do repositório oficial (excluindo AUR: code, postman, swaylock-effects, mongodb, virtualenv)
 pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano \
-    grub efibootmgr hyprland xdg-desktop-portal-hyprland kitty waybar rofi \
-    swaylock-effects swww polkit-gnome pipewire-audio wireplumber pavucontrol \
-    brightnessctl bluez bluez-utils blueman network-manager-applet thunar \
-    thunar-archive-plugin ttf-jetbrains-mono-nerd noto-fonts bash-completion \
-    btop clang curl dbeaver docker docker-compose dunst feh fwupd gcc go htop \
-    jupyterlab kdeconnect libinput lm_sensors make mariadb mesa mongodb neovim \
-    nginx nodejs npm openssh poetry postgresql python python-pip redis ripgrep \
-    rust sof-firmware starship tlp unzip virtualenv zip
+    grub efibootmgr hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww \
+    polkit-gnome pipewire-audio wireplumber pavucontrol brightnessctl bluez bluez-utils \
+    blueman network-manager-applet thunar thunar-archive-plugin ttf-jetbrains-mono-nerd \
+    noto-fonts bash-completion btop clang curl dbeaver docker docker-compose dunst feh \
+    fwupd gcc go htop jupyterlab kdeconnect libinput lm_sensors make mariadb mesa \
+    neovim nginx nodejs npm openssh poetry postgresql python python-pip redis ripgrep \
+    rust sof-firmware starship tlp unzip zip
 check_error "Falha ao instalar pacotes base"
 
 echo "[6/9] → Gerando /etc/fstab..."
@@ -237,8 +236,8 @@ su - "$user" -c "
   makepkg -si --noconfirm
 "
 
-# Instalar pacotes do AUR (code, postman)
-su - "$user" -c "yay -S code postman --noconfirm --needed"
+# Instalar pacotes do AUR (code, postman, swaylock-effects, mongodb, virtualenv)
+su - "$user" -c "yay -S code postman swaylock-effects mongodb-bin python-virtualenv --noconfirm --needed"
 
 # Copiar configurações do repositório
 su - "$user" -c "
