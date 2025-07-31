@@ -50,6 +50,11 @@ if lsblk -dno RM "$disk" | grep -q 1; then
     echo "Erro: Disco selecionado é removível. Escolha um disco interno."
     exit 1
 fi
+# Verificar tamanho mínimo do disco
+if [ $(lsblk -dno SIZE "$disk" | grep -o '[0-9.]\+') -lt 20 ]; then
+    echo "Erro: Disco muito pequeno (<20GB)."
+    exit 1
+fi
 read -p "AVISO: Todos os dados em $disk serão apagados. Continuar? (s/n): " confirm
 if [ "$confirm" != "s" ]; then
     echo "Instalação cancelada."
@@ -233,8 +238,9 @@ pacman -S base-devel git --noconfirm
 su - "$user" -c "
   git clone https://aur.archlinux.org/yay.git /tmp/yay &&
   cd /tmp/yay &&
-  makepkg -si --noconfirm
+  makepkg -s --noconfirm
 "
+pacman -U /tmp/yay/yay-*.pkg.tar.zst --noconfirm
 
 # Instalar pacotes do AUR (code, postman, swaylock-effects, mongodb, virtualenv)
 su - "$user" -c "yay -S code postman swaylock-effects mongodb-bin python-virtualenv --noconfirm --needed"
