@@ -3,10 +3,15 @@ set -e
 
 # Função para verificar conexão com a internet
 check_internet() {
-    if ! ping -c 1 archlinux.org > /dev/null 2>&1; then
-        echo "Erro: Sem conexão com a internet. Use 'nmtui' para configurar."
-        exit 1
-    fi
+    for i in {1..3}; do
+        if ping -c 1 archlinux.org > /dev/null 2>&1; then
+            return 0
+        fi
+        echo "Tentativa $i: Sem conexão com a internet. Tentando novamente em 5 segundos..."
+        sleep 5
+    done
+    echo "Erro: Sem conexão com a internet. Use 'nmtui' para configurar."
+    exit 1
 }
 
 # Função para detectar modo de boot (UEFI ou BIOS)
@@ -138,18 +143,23 @@ check_internet
 # Atualizar lista de espelhos
 echo "Atualizando lista de espelhos..."
 pacman -Syy reflector
-reflector --country Brazil --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
-pacman -Syy
+reflector --country Brazil,US,Germany --latest 20 --sort rate --save /etc/pacman.d/mirrorlist
+pacman -Syy --timeout 10
 check_error "Falha ao atualizar repositórios"
 
 echo "[2/9] → Particionando $disk..."
+# Desmontar partições e desativar swap
+umount -R /mnt 2>/dev/null || true
+swapoff -a 2>/dev/null || true
 sgdisk --zap-all "$disk"
+partprobe "$disk"
 parted -s "$disk" mklabel gpt
 parted -s "$disk" mkpart EFI fat32 1MiB 513MiB
 parted -s "$disk" set 1 esp on
 parted -s "$disk" mkpart linux-swap 513MiB 4609MiB
 parted -s "$disk" mkpart primary ext4 4609MiB 56337MiB
 parted -s "$disk" mkpart primary ext4 56337MiB 100%
+partprobe "$disk"
 check_error "Falha ao particionar o disco"
 
 echo "[3/9] → Formatando partições..."
