@@ -258,10 +258,17 @@ chown -R $user:$user /home/$user/.config
 # Instalar GRUB
 if [ "$BOOT_MODE" = "UEFI" ]; then
     grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+    mkdir -p /boot/efi
+    mount /dev/disk/by-partlabel/EFI /boot/efi
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
 else
     grub-install --target=i386-pc $disk
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
+if [ ! -f /boot/grub/grub.cfg ]; then
+    echo "Erro: Arquivo /boot/grub/grub.cfg não foi gerado."
+    exit 1
+fi
 
 # Habilitar serviços
 systemctl enable systemd-timesyncd
@@ -321,6 +328,8 @@ fi
 check_error "Falha ao instalar drivers gráficos"
 
 echo "[9/9] → Instalação concluída."
+echo "IMPORTANTE: Remova o pendrive/ISO do Arch Linux antes de reiniciar."
+echo "Verifique na BIOS/UEFI que o disco interno ($disk) é o primeiro na ordem de boot."
 echo "Reiniciando em 10 segundos..."
 sleep 10
 reboot
