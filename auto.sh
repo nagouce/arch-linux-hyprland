@@ -10,7 +10,7 @@ check_internet() {
         echo "Tentativa $i: Sem conexão com a internet. Tentando novamente em 5 segundos..."
         sleep 5
     done
-    echo "Erro: Sem conexão com a internet. Use 'nmtui' para configurar."
+    echo "Erro: Sem conexão com a internet. Use 'nmtui' para Wi-Fi ou 'dhcpcd' para Ethernet."
     exit 1
 }
 
@@ -23,6 +23,22 @@ detect_boot_mode() {
     fi
 }
 
+# Função para verificar tipo de conexão de rede
+check_network_type() {
+    if ip link | grep -q "wlan"; then
+        NETWORK_TYPE="Wi-Fi"
+        echo "Conexão Wi-Fi detectada. Certifique-se de que está conectado via 'nmtui'."
+    elif ip link | grep -q "eth"; then
+        NETWORK_TYPE="Ethernet"
+        echo "Conexão Ethernet detectada. Ativando DHCP..."
+        dhcpcd 2>/dev/null || true
+    else
+        NETWORK_TYPE="Unknown"
+        echo "Nenhuma conexão de rede detectada. Configure com 'nmtui' ou 'dhcpcd'."
+        exit 1
+    fi
+}
+
 # Função para verificar erros
 check_error() {
     if [ $? -ne 0 ]; then
@@ -31,7 +47,7 @@ check_error() {
     fi
 }
 
-# Instalar dialog e git para menus interativos e clonagem no ambiente live
+# Instalar dialog e git no ambiente live
 pacman -S --noconfirm dialog git
 check_error "Falha ao instalar dialog e git no ambiente live"
 
@@ -55,7 +71,6 @@ if lsblk -dno RM "$disk" | grep -q 1; then
     echo "Erro: Disco selecionado é removível. Escolha um disco interno."
     exit 1
 fi
-# Verificar tamanho mínimo do disco
 if [ $(lsblk -dno SIZE "$disk" | grep -o '[0-9.]\+') -lt 20 ]; then
     echo "Erro: Disco muito pequeno (<20GB)."
     exit 1
@@ -132,6 +147,9 @@ fi
 detect_boot_mode
 echo "Modo de boot detectado: $BOOT_MODE"
 
+# Verificar tipo de conexão de rede
+check_network_type
+
 # Iniciar log
 exec 1> >(tee -a /tmp/install.log)
 exec 2>&1
@@ -140,19 +158,26 @@ echo "Iniciando instalação em $(date)"
 echo "[1/9] → Verificando pré-requisitos..."
 check_internet
 
-# Atualizar lista de espelhos
+# Atualizar lista de espelhos com base na região
 echo "Atualizando lista de espelhos..."
 pacman -Syy reflector
-for i in {1..3}; do
-    reflector --country Brazil,US,Germany --latest 20 --sort rate --save /etc/pacman.d/mirrorlist && break
-    echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
-    sleep 5
-done
+if [ "$region" = "America" ]; then
+    for i in {1..3}; do
+        reflector --country Brazil,United_States,Canada,Chile,Argentina --latest 20 --sort rate --save /etc/pacman.d/mirrorlist && break
+        echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
+        sleep 5
+    done
+else
+    for i in {1..3}; do
+        reflector --latest 20 --sort rate --save /etc/pacman.d/mirrorlist && break
+        echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
+        sleep 5
+    done
+fi
 pacman -Syy
 check_error "Falha ao atualizar repositórios"
 
 echo "[2/9] → Particionando $disk..."
-# Desmontar partições e desativar swap
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
 sgdisk --zap-all "$disk"
@@ -182,7 +207,6 @@ mount "${disk}4" /mnt/home
 check_error "Falha ao montar partições"
 
 echo "[5/9] → Instalando base..."
-# Pacotes do repositório oficial (incluindo sddm, excluindo AUR: code, postman, swaylock-effects, mongodb, virtualenv)
 pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano \
     grub efibootmgr hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww \
     sddm polkit-gnome pipewire-audio wireplumber pavucontrol brightnessctl bluez bluez-utils \
@@ -222,7 +246,8 @@ HOSTS
 echo "root:$pass" | chpasswd
 useradd -m -G wheel,docker,video,audio,input "$user"
 echo "$user:$pass" | chpasswd
-echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel
+echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/wheel_install
+chmod 440 /etc/sudoers.d/wheel_install
 
 # Configurar layout do teclado
 echo "KEYMAP=$keymap" > /etc/vconsole.conf
@@ -256,7 +281,7 @@ su - "$user" -c "
 "
 pacman -U /tmp/yay/yay-*.pkg.tar.zst --noconfirm
 
-# Instalar pacotes do AUR (code, postman, swaylock-effects, mongodb, virtualenv)
+# Instalar pacotes do AUR
 su - "$user" -c "yay -S code postman swaylock-effects mongodb-bin python-virtualenv --noconfirm --needed"
 
 # Copiar configurações do repositório
@@ -265,6 +290,11 @@ su - "$user" -c "
   mkdir -p ~/.config &&
   cp -r ~/setup/configs/* ~/.config/ || true
 "
+
+# Remover privilégios de sudo sem senha
+rm /etc/sudoers.d/wheel_install
+echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel
+chmod 440 /etc/sudoers.d/wheel
 EOF
 check_error "Falha ao configurar o sistema"
 
@@ -272,6 +302,9 @@ echo "[8/9] → Verificando configurações de hardware..."
 if lscpu | grep -i intel; then
     echo "CPU Intel detectada. Instalando intel-ucode..."
     pacstrap /mnt intel-ucode
+elif lscpu | grep -i amd; then
+    echo "CPU AMD detectada. Instalando amd-ucode..."
+    pacstrap /mnt amd-ucode
 fi
 if lspci | grep -i nvidia; then
     echo "GPU NVIDIA detectada. Instalando drivers..."
