@@ -163,10 +163,10 @@ mount "${disk}4" /mnt/home
 check_error "Falha ao montar partições"
 
 echo "[5/9] → Instalando base..."
-# Pacotes do repositório oficial (excluindo AUR: code, postman, swaylock-effects, mongodb, virtualenv)
+# Pacotes do repositório oficial (incluindo sddm, excluindo AUR: code, postman, swaylock-effects, mongodb, virtualenv)
 pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano \
     grub efibootmgr hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww \
-    polkit-gnome pipewire-audio wireplumber pavucontrol brightnessctl bluez bluez-utils \
+    sddm polkit-gnome pipewire-audio wireplumber pavucontrol brightnessctl bluez bluez-utils \
     blueman network-manager-applet thunar thunar-archive-plugin ttf-jetbrains-mono-nerd \
     noto-fonts bash-completion btop clang curl dbeaver docker docker-compose dunst feh \
     fwupd gcc go htop jupyterlab kdeconnect libinput lm_sensors make mariadb mesa \
