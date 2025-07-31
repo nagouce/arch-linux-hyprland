@@ -143,8 +143,12 @@ check_internet
 # Atualizar lista de espelhos
 echo "Atualizando lista de espelhos..."
 pacman -Syy reflector
-reflector --country Brazil,US,Germany --latest 20 --sort rate --save /etc/pacman.d/mirrorlist
-pacman -Syy --timeout 10
+for i in {1..3}; do
+    reflector --country Brazil,US,Germany --latest 20 --sort rate --save /etc/pacman.d/mirrorlist && break
+    echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
+    sleep 5
+done
+pacman -Syy
 check_error "Falha ao atualizar repositórios"
 
 echo "[2/9] → Particionando $disk..."
