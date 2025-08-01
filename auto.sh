@@ -158,21 +158,17 @@ echo "Iniciando instalação em $(date)"
 echo "[1/9] → Verificando pré-requisitos..."
 check_internet
 
-# Atualizar lista de espelhos com base no melhor ping
-echo "Atualizando lista de espelhos com base no melhor ping..."
+# Atualizar lista de espelhos com base no melhor ping (apenas Brasil)
+echo "Atualizando lista de espelhos com os melhores pings do Brasil..."
 pacman -Syy reflector
-if [ "$region" = "America" ]; then
-    for i in {1..3}; do
-        reflector --country Brazil,United_States,Canada,Chile,Argentina --fastest 5 --sort rate --save /etc/pacman.d/mirrorlist && break
-        echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
-        sleep 5
-    done
-else
-    for i in {1..3}; do
-        reflector --fastest 5 --sort rate --save /etc/pacman.d/mirrorlist && break
-        echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
-        sleep 5
-    done
+for i in {1..3}; do
+    reflector --country Brazil --fastest 5 --sort rate --save /etc/pacman.d/mirrorlist && break
+    echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
+    sleep 5
+done
+if [ ! -s /etc/pacman.d/mirrorlist ]; then
+    echo "Erro: Lista de espelhos vazia. Usando espelho padrão..."
+    echo "Server = https://mirror.archlinux.org/$repo/os/$arch" > /etc/pacman.d/mirrorlist
 fi
 pacman -Syy
 check_error "Falha ao atualizar repositórios"
