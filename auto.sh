@@ -48,8 +48,8 @@ check_error() {
 }
 
 # Instalar dialog, git e dosfstools no ambiente live
-pacman -S --noconfirm dialog git dosfstools
-check_error "Falha ao instalar dialog, git ou dosfstools no ambiente live"
+pacman -S --noconfirm dialog git dosfstools smartmontools
+check_error "Falha ao instalar dialog, git, dosfstools ou smartmontools no ambiente live"
 
 # Aviso inicial sobre formatação
 echo "Bem-vindo à instalação do Arch Linux com Hyprland!"
@@ -78,6 +78,14 @@ fi
 read -p "AVISO: Todos os dados em $disk serão apagados. Continuar? (s/n): " confirm
 if [ "$confirm" != "s" ]; then
     echo "Instalação cancelada."
+    exit 1
+fi
+
+# Verificar saúde do disco
+echo "Verificando saúde do disco $disk..."
+smartctl -a "$disk" | tee -a /tmp/install.log
+if smartctl -a "$disk" | grep -q "SMART overall-health self-assessment test result: FAILED"; then
+    echo "Erro: Disco $disk apresenta falhas no teste SMART. Considere substituir o disco."
     exit 1
 fi
 
@@ -183,6 +191,7 @@ echo "[2/9] → Particionando $disk..."
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
 wipefs -a "$disk"
+wipefs -a "${disk}1" 2>/dev/null || true
 sgdisk --zap-all "$disk"
 partprobe "$disk"
 sync
@@ -196,9 +205,19 @@ partprobe "$disk"
 sync
 check_error "Falha ao particionar o disco"
 
+# Verificar estado do disco
+echo "Verificando estado do disco $disk..."
+blockdev --rereadpt "$disk"
+dmesg | grep "$disk" | tail -n 10 >> /tmp/install.log
+if dmesg | grep -i "error.*$disk"; then
+    echo "Erro: Problemas detectados no disco $disk. Verifique /tmp/install.log."
+    exit 1
+fi
+
 echo "[3/9] → Formatando partições..."
 umount "${disk}1" 2>/dev/null || true
-mkfs.vfat -F 32 -n EFI "${disk}1"
+wipefs -a "${disk}1" 2>/dev/null || true
+mkfs.vfat -F 32 -I -n EFI "${disk}1"
 sync
 mkswap -L SWAP "${disk}2"
 swapon "${disk}2"
@@ -211,11 +230,13 @@ check_error "Falha ao formatar partições"
 if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
     echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32. Tentando novamente..."
     umount "${disk}1" 2>/dev/null || true
-    mkfs.vfat -F 32 -n EFI "${disk}1"
+    wipefs -a "${disk}1" 2>/dev/null || true
+    mkfs.vfat -F 32 -I -n EFI "${disk}1"
     sync
     if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
         echo "Erro: Falha persistente ao formatar ${disk}1 como FAT32."
-        echo "Verifique se o disco está bloqueado ou danificado com 'dmesg | grep sda'."
+        echo "Verifique erros com 'dmesg | grep sda' e saúde do disco com 'smartctl -a $disk'."
+        dmesg | grep "$disk" | tail -n 10 >> /tmp/install.log
         exit 1
     fi
 fi
