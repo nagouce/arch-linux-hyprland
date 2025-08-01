@@ -47,9 +47,9 @@ check_error() {
     fi
 }
 
-# Instalar dialog e git no ambiente live
-pacman -S --noconfirm dialog git
-check_error "Falha ao instalar dialog e git no ambiente live"
+# Instalar dialog, git e dosfstools no ambiente live
+pacman -S --noconfirm dialog git dosfstools
+check_error "Falha ao instalar dialog, git ou dosfstools no ambiente live"
 
 # Aviso inicial sobre formatação
 echo "Bem-vindo à instalação do Arch Linux com Hyprland!"
@@ -184,22 +184,37 @@ umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
 sgdisk --zap-all "$disk"
 partprobe "$disk"
+sync
 parted -s "$disk" mklabel gpt
 parted -s "$disk" mkpart EFI fat32 1MiB 513MiB
 parted -s "$disk" set 1 esp on
-parted -s "$disk" mkpart linux-swap 513MiB 4609MiB
-parted -s "$disk" mkpart primary ext4 4609MiB 56337MiB
-parted -s "$disk" mkpart primary ext4 56337MiB 100%
+parted -s "$disk" mkpart linux-swap 513MiB 8705MiB
+parted -s "$disk" mkpart primary ext4 8705MiB 58705MiB
+parted -s "$disk" mkpart primary ext4 58705MiB 100%
 partprobe "$disk"
+sync
 check_error "Falha ao particionar o disco"
 
 echo "[3/9] → Formatando partições..."
 mkfs.fat -F32 "${disk}1"
+sync
 mkswap "${disk}2"
 swapon "${disk}2"
 mkfs.ext4 "${disk}3"
 mkfs.ext4 "${disk}4"
+sync
 check_error "Falha ao formatar partições"
+
+# Verificar formatação da partição EFI
+if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
+    echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32. Tentando novamente..."
+    mkfs.fat -F32 "${disk}1"
+    sync
+    if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
+        echo "Erro: Falha persistente ao formatar ${disk}1 como FAT32."
+        exit 1
+    fi
+fi
 
 echo "[4/9] → Montando partições..."
 mount "${disk}3" /mnt
@@ -212,10 +227,6 @@ check_error "Falha ao montar partições"
 # Verificar partição EFI
 if ! mount | grep -q "${disk}1 on /mnt/boot/efi type vfat"; then
     echo "Erro: Partição EFI não montada corretamente em /mnt/boot/efi."
-    exit 1
-fi
-if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
-    echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32."
     exit 1
 fi
 
