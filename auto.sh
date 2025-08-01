@@ -203,9 +203,17 @@ mkdir -p /mnt/home
 mount "${disk}4" /mnt/home
 check_error "Falha ao montar partições"
 
+# Verificar partição EFI
+if [ "$BOOT_MODE" = "UEFI" ]; then
+    if ! mount | grep -q "${disk}1 on /mnt/boot/efi type vfat"; then
+        echo "Erro: Partição EFI não montada corretamente."
+        exit 1
+    fi
+fi
+
 echo "[5/9] → Instalando base..."
 pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano \
-    grub efibootmgr hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww \
+    grub efibootmgr os-prober hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww \
     sddm polkit-gnome pipewire-audio wireplumber pavucontrol brightnessctl bluez bluez-utils \
     blueman network-manager-applet thunar thunar-archive-plugin ttf-jetbrains-mono-nerd \
     noto-fonts bash-completion btop clang curl dbeaver docker docker-compose dunst feh \
@@ -254,11 +262,11 @@ chown -R $user:$user /home/$user/.config
 
 # Instalar e configurar GRUB
 if [ "$BOOT_MODE" = "UEFI" ]; then
-    pacman -S efibootmgr --noconfirm
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
-    efibootmgr --create --disk $disk --part 1 --loader /EFI/GRUB/grubx64.efi --label "Arch Linux" --verbose
+    pacman -S efibootmgr os-prober --noconfirm
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ArchLinux --recheck
+    efibootmgr --create --disk $disk --part 1 --loader /EFI/ArchLinux/grubx64.efi --label "Arch Linux" --verbose
 else
-    grub-install --target=i386-pc $disk
+    grub-install --target=i386-pc $disk --recheck
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
 if [ ! -f /boot/grub/grub.cfg ]; then
@@ -268,6 +276,10 @@ fi
 if [ "$BOOT_MODE" = "UEFI" ]; then
     efibootmgr | grep -q "Arch Linux" || {
         echo "Erro: Entrada do GRUB não registrada no firmware UEFI."
+        exit 1
+    }
+    ls /boot/efi/EFI/ArchLinux/grubx64.efi || {
+        echo "Erro: Arquivo grubx64.efi não encontrado em /boot/efi/EFI/ArchLinux."
         exit 1
     }
 fi
@@ -330,11 +342,11 @@ fi
 check_error "Falha ao instalar drivers gráficos"
 
 echo "[9/9] → Instalação concluída."
-echo "IMPORTANTE: Remova o pendrive/ISO do Arch Linux antes de reiniciar."
+echo "IMPORTANTE: Remova TODOS os pendrives e dispositivos externos antes de reiniciar."
 echo "Entre na BIOS/UEFI (tecla F2, Del ou Esc) e configure:"
 echo "1. Desative Secure Boot e Fast Boot."
 echo "2. Defina o disco interno ($disk) como primeiro na ordem de boot."
-echo "3. Verifique se 'Arch Linux' aparece na lista de boot (UEFI)."
-echo "Reiniciando em 10 segundos..."
-sleep 10
+echo "3. Para UEFI, verifique se 'Arch Linux' aparece na lista de boot."
+echo "Reiniciando em 15 segundos... Pressione Ctrl+C para cancelar."
+sleep 15
 reboot
