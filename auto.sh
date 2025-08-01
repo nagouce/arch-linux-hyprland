@@ -182,6 +182,7 @@ check_error "Falha ao atualizar repositórios"
 echo "[2/9] → Particionando $disk..."
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
+wipefs -a "$disk"
 sgdisk --zap-all "$disk"
 partprobe "$disk"
 sync
@@ -196,22 +197,25 @@ sync
 check_error "Falha ao particionar o disco"
 
 echo "[3/9] → Formatando partições..."
-mkfs.fat -F32 "${disk}1"
+umount "${disk}1" 2>/dev/null || true
+mkfs.vfat -F 32 -n EFI "${disk}1"
 sync
-mkswap "${disk}2"
+mkswap -L SWAP "${disk}2"
 swapon "${disk}2"
-mkfs.ext4 "${disk}3"
-mkfs.ext4 "${disk}4"
+mkfs.ext4 -L ROOT "${disk}3"
+mkfs.ext4 -L HOME "${disk}4"
 sync
 check_error "Falha ao formatar partições"
 
 # Verificar formatação da partição EFI
 if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
     echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32. Tentando novamente..."
-    mkfs.fat -F32 "${disk}1"
+    umount "${disk}1" 2>/dev/null || true
+    mkfs.vfat -F 32 -n EFI "${disk}1"
     sync
     if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
         echo "Erro: Falha persistente ao formatar ${disk}1 como FAT32."
+        echo "Verifique se o disco está bloqueado ou danificado com 'dmesg | grep sda'."
         exit 1
     fi
 fi
