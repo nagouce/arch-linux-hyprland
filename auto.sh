@@ -168,7 +168,7 @@ for i in {1..3}; do
 done
 if [ ! -s /etc/pacman.d/mirrorlist ]; then
     echo "Erro: Lista de espelhos vazia. Usando espelho padrão..."
-    echo "Server = https://mirror.archlinux.org/$repo/os/$arch" > /etc/pacman.d/mirrorlist
+    echo "Server = https://mirror.ufscar.br/archlinux/$repo/os/$arch" > /etc/pacman.d/mirrorlist
 fi
 pacman -Syy
 check_error "Falha ao atualizar repositórios"
@@ -197,8 +197,9 @@ check_error "Falha ao formatar partições"
 
 echo "[4/9] → Montando partições..."
 mount "${disk}3" /mnt
-mkdir -p /mnt/{boot,home}
-mount "${disk}1" /mnt/boot
+mkdir -p /mnt/boot/efi
+mount "${disk}1" /mnt/boot/efi
+mkdir -p /mnt/home
 mount "${disk}4" /mnt/home
 check_error "Falha ao montar partições"
 
@@ -251,12 +252,11 @@ mkdir -p /home/$user/.config/hypr
 echo "input { kb_layout = $keymap }" > /home/$user/.config/hypr/hyprland.conf
 chown -R $user:$user /home/$user/.config
 
-# Instalar GRUB
+# Instalar e configurar GRUB
 if [ "$BOOT_MODE" = "UEFI" ]; then
-    grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
-    mkdir -p /boot/efi
-    mount /dev/disk/by-partlabel/EFI /boot/efi
+    pacman -S efibootmgr --noconfirm
     grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+    efibootmgr --create --disk $disk --part 1 --loader /EFI/GRUB/grubx64.efi --label "Arch Linux" --verbose
 else
     grub-install --target=i386-pc $disk
 fi
@@ -264,6 +264,12 @@ grub-mkconfig -o /boot/grub/grub.cfg
 if [ ! -f /boot/grub/grub.cfg ]; then
     echo "Erro: Arquivo /boot/grub/grub.cfg não foi gerado."
     exit 1
+fi
+if [ "$BOOT_MODE" = "UEFI" ]; then
+    efibootmgr | grep -q "Arch Linux" || {
+        echo "Erro: Entrada do GRUB não registrada no firmware UEFI."
+        exit 1
+    }
 fi
 
 # Habilitar serviços
@@ -325,8 +331,10 @@ check_error "Falha ao instalar drivers gráficos"
 
 echo "[9/9] → Instalação concluída."
 echo "IMPORTANTE: Remova o pendrive/ISO do Arch Linux antes de reiniciar."
-echo "Verifique na BIOS/UEFI que o disco interno ($disk) é o primeiro na ordem de boot."
-echo "Desative Secure Boot e Fast Boot na BIOS/UEFI para evitar problemas com o GRUB."
+echo "Entre na BIOS/UEFI (tecla F2, Del ou Esc) e configure:"
+echo "1. Desative Secure Boot e Fast Boot."
+echo "2. Defina o disco interno ($disk) como primeiro na ordem de boot."
+echo "3. Verifique se 'Arch Linux' aparece na lista de boot (UEFI)."
 echo "Reiniciando em 10 segundos..."
 sleep 10
 reboot
