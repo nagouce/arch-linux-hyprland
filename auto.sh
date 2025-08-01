@@ -147,6 +147,12 @@ fi
 detect_boot_mode
 echo "Modo de boot detectado: $BOOT_MODE"
 
+# Verificar se é UEFI (obrigatório para seu notebook Samsung)
+if [ "$BOOT_MODE" != "UEFI" ]; then
+    echo "Erro: Este script requer modo UEFI. Seu sistema está em modo BIOS legado."
+    exit 1
+fi
+
 # Verificar tipo de conexão de rede
 check_network_type
 
@@ -204,11 +210,13 @@ mount "${disk}4" /mnt/home
 check_error "Falha ao montar partições"
 
 # Verificar partição EFI
-if [ "$BOOT_MODE" = "UEFI" ]; then
-    if ! mount | grep -q "${disk}1 on /mnt/boot/efi type vfat"; then
-        echo "Erro: Partição EFI não montada corretamente."
-        exit 1
-    fi
+if ! mount | grep -q "${disk}1 on /mnt/boot/efi type vfat"; then
+    echo "Erro: Partição EFI não montada corretamente em /mnt/boot/efi."
+    exit 1
+fi
+if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
+    echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32."
+    exit 1
 fi
 
 echo "[5/9] → Instalando base..."
@@ -225,6 +233,12 @@ check_error "Falha ao instalar pacotes base"
 echo "[6/9] → Gerando /etc/fstab..."
 genfstab -U /mnt >> /mnt/etc/fstab
 check_error "Falha ao gerar fstab"
+
+# Verificar /etc/fstab
+if ! grep -q "${disk}1" /mnt/etc/fstab; then
+    echo "Erro: Partição EFI (${disk}1) não encontrada no /etc/fstab."
+    exit 1
+fi
 
 echo "[7/9] → Configurando sistema..."
 arch-chroot /mnt /bin/bash <<EOF
@@ -260,28 +274,43 @@ mkdir -p /home/$user/.config/hypr
 echo "input { kb_layout = $keymap }" > /home/$user/.config/hypr/hyprland.conf
 chown -R $user:$user /home/$user/.config
 
+# Limpar entradas UEFI antigas
+pacman -S efibootmgr os-prober --noconfirm
+for entry in \$(efibootmgr | grep -i "Arch Linux" | awk '{print \$1}' | cut -c5-8); do
+    efibootmgr --delete-bootnum --bootnum \$entry
+done
+
 # Instalar e configurar GRUB
 if [ "$BOOT_MODE" = "UEFI" ]; then
-    pacman -S efibootmgr os-prober --noconfirm
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ArchLinux --recheck
-    efibootmgr --create --disk $disk --part 1 --loader /EFI/ArchLinux/grubx64.efi --label "Arch Linux" --verbose
+    if ! mount | grep -q "/boot/efi type vfat"; then
+        echo "Erro: Partição EFI não montada em /boot/efi no chroot."
+        exit 1
+    fi
+    for i in {1..3}; do
+        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=arch --recheck && break
+        echo "Tentativa $i: Falha ao instalar GRUB. Tentando novamente..."
+        sleep 2
+    done
+    for i in {1..3}; do
+        efibootmgr --create --disk $disk --part 1 --loader /EFI/arch/grubx64.efi --label "Arch Linux" --verbose && break
+        echo "Tentativa $i: Falha ao registrar entrada UEFI. Tentando novamente..."
+        sleep 2
+    done
+    if ! efibootmgr | grep -q "Arch Linux"; then
+        echo "Erro: Entrada do GRUB não registrada no firmware UEFI."
+        exit 1
+    fi
+    if ! ls /boot/efi/EFI/arch/grubx64.efi; then
+        echo "Erro: Arquivo grubx64.efi não encontrado em /boot/efi/EFI/arch."
+        exit 1
+    fi
 else
     grub-install --target=i386-pc $disk --recheck
 fi
 grub-mkconfig -o /boot/grub/grub.cfg
-if [ ! -f /boot/grub/grub.cfg ]; then
+if ! ls /boot/grub/grub.cfg; then
     echo "Erro: Arquivo /boot/grub/grub.cfg não foi gerado."
     exit 1
-fi
-if [ "$BOOT_MODE" = "UEFI" ]; then
-    efibootmgr | grep -q "Arch Linux" || {
-        echo "Erro: Entrada do GRUB não registrada no firmware UEFI."
-        exit 1
-    }
-    ls /boot/efi/EFI/ArchLinux/grubx64.efi || {
-        echo "Erro: Arquivo grubx64.efi não encontrado em /boot/efi/EFI/ArchLinux."
-        exit 1
-    }
 fi
 
 # Habilitar serviços
@@ -343,10 +372,11 @@ check_error "Falha ao instalar drivers gráficos"
 
 echo "[9/9] → Instalação concluída."
 echo "IMPORTANTE: Remova TODOS os pendrives e dispositivos externos antes de reiniciar."
-echo "Entre na BIOS/UEFI (tecla F2, Del ou Esc) e configure:"
-echo "1. Desative Secure Boot e Fast Boot."
-echo "2. Defina o disco interno ($disk) como primeiro na ordem de boot."
-echo "3. Para UEFI, verifique se 'Arch Linux' aparece na lista de boot."
+echo "Entre na BIOS/UEFI (tecla F2) e configure:"
+echo "1. Confirme que Secure Boot está DESATIVADO."
+echo "2. Confirme que Fast BIOS Mode está DESATIVADO."
+echo "3. Em Boot Device Options, selecione 'Arch Linux' ou o disco interno ($disk)."
+echo "4. Se 'Arch Linux' não aparecer, reinstale o GRUB manualmente (veja /tmp/install.log)."
 echo "Reiniciando em 15 segundos... Pressione Ctrl+C para cancelar."
 sleep 15
 reboot
