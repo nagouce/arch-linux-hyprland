@@ -158,18 +158,18 @@ echo "Iniciando instalação em $(date)"
 echo "[1/9] → Verificando pré-requisitos..."
 check_internet
 
-# Atualizar lista de espelhos com base na região
-echo "Atualizando lista de espelhos..."
+# Atualizar lista de espelhos com base no melhor ping
+echo "Atualizando lista de espelhos com base no melhor ping..."
 pacman -Syy reflector
 if [ "$region" = "America" ]; then
     for i in {1..3}; do
-        reflector --country Brazil,United_States,Canada,Chile,Argentina --latest 20 --sort rate --save /etc/pacman.d/mirrorlist && break
+        reflector --country Brazil,United_States,Canada,Chile,Argentina --fastest 5 --sort rate --save /etc/pacman.d/mirrorlist && break
         echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
         sleep 5
     done
 else
     for i in {1..3}; do
-        reflector --latest 20 --sort rate --save /etc/pacman.d/mirrorlist && break
+        reflector --fastest 5 --sort rate --save /etc/pacman.d/mirrorlist && break
         echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
         sleep 5
     done
@@ -330,6 +330,7 @@ check_error "Falha ao instalar drivers gráficos"
 echo "[9/9] → Instalação concluída."
 echo "IMPORTANTE: Remova o pendrive/ISO do Arch Linux antes de reiniciar."
 echo "Verifique na BIOS/UEFI que o disco interno ($disk) é o primeiro na ordem de boot."
+echo "Desative Secure Boot e Fast Boot na BIOS/UEFI para evitar problemas com o GRUB."
 echo "Reiniciando em 10 segundos..."
 sleep 10
 reboot
