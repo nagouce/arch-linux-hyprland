@@ -43,6 +43,7 @@ check_network_type() {
 check_error() {
     if [ $? -ne 0 ]; then
         echo "Erro: $1"
+        echo "Detalhes em /tmp/install.log"
         exit 1
     fi
 }
@@ -111,6 +112,16 @@ fi
 echo "Forçando liberação do disco $disk..."
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
+echo 1 > /proc/sys/kernel/sysrq
+echo u > /proc/sysrq-trigger
+sync
+sleep 2
+dd if=/dev/zero of="$disk" bs=1M count=10 status=progress 2>> /tmp/install.log
+sync
+wipefs -a "$disk" 2>> /tmp/install.log
+sgdisk --zap-all "$disk" 2>> /tmp/install.log
+partprobe "$disk"
+sync
 echo 1 > /proc/sys/kernel/sysrq
 echo u > /proc/sysrq-trigger
 sync
@@ -218,10 +229,10 @@ echo "[2/9] → Particionando $disk..."
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
 wipefs -a "$disk" 2>> /tmp/install.log
-wipefs -a "${disk}1" 2>/dev/null || true
 sgdisk --zap-all "$disk" 2>> /tmp/install.log
-partprobe "$disk"
+dd if=/dev/zero of="$disk" bs=1M count=10 status=progress 2>> /tmp/install.log
 sync
+partprobe "$disk"
 echo 1 > /proc/sys/kernel/sysrq
 echo u > /proc/sysrq-trigger
 sync
@@ -236,7 +247,7 @@ partprobe "$disk"
 sync
 for i in {1..3}; do
     blockdev --rereadpt "$disk" && break
-    echo "Tentativa $i: Falha ao atualizar tabela de partições. Tentando novamente..."
+    echo "Tentativa $i: Falha ao atualizar tabela de partições. Forçando liberação..."
     echo 1 > /proc/sys/kernel/sysrq
     echo u > /proc/sysrq-trigger
     sync
