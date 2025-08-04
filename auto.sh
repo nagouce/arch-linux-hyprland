@@ -105,13 +105,7 @@ generate_archinstall_config() {
             "sudo": true
         }
     },
-    "root_password": "$root_password",
-    "disk_config": {
-        "layout": {
-            "type": "manual",
-            "partitions": []
-        }
-    }
+    "root_password": "$root_password"
 }
 EOF
 }
