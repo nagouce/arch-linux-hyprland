@@ -24,16 +24,29 @@ check_error() {
 }
 
 # Instalar ferramentas necessárias no ambiente live
-pacman -S --noconfirm lsof dosfstools smartmontools
-check_error "Falha ao instalar lsof, dosfstools ou smartmontools no ambiente live"
+pacman -S --noconfirm lsof dosfstools smartmontools git reflector
+check_error "Falha ao instalar lsof, dosfstools, smartmontools, git ou reflector no ambiente live"
 
 # Aviso inicial
 echo "Bem-vindo à instalação automatizada do Arch Linux com Hyprland!"
-read -p "Deseja formatar completamente o disco /dev/sda e prosseguir? (s/n): " initial_confirm
+echo "AVISO: Todos os dados em /dev/sda serão apagados."
+read -p "Deseja prosseguir? (s/n): " initial_confirm
 if [ "$initial_confirm" != "s" ]; then
     echo "Instalação cancelada."
     exit 1
 fi
+
+# Solicitar usuário, senha e hostname
+read -p "Digite o nome do usuário: " user
+read -s -p "Digite a senha do usuário: " pass
+echo
+read -s -p "Confirme a senha do usuário: " pass_confirm
+echo
+if [ "$pass" != "$pass_confirm" ]; then
+    echo "Erro: As senhas não coincidem."
+    exit 1
+fi
+read -p "Digite o hostname do sistema: " hostname
 
 # Verificar saúde do disco
 echo "Verificando saúde do disco /dev/sda..."
@@ -67,18 +80,42 @@ sync
 sleep 2
 partprobe /dev/sda
 blockdev --rereadpt /dev/sda
+check_error "Falha ao liberar disco /dev/sda"
 
-# Solicitar usuário, senha e hostname
-read -p "Digite o nome do usuário: " user
-read -s -p "Digite a senha do usuário: " pass
-echo
-read -s -p "Confirme a senha do usuário: " pass_confirm
-echo
-if [ "$pass" != "$pass_confirm" ]; then
-    echo "Erro: As senhas não coincidem."
+# Verificar modo UEFI
+if [ ! -d /sys/firmware/efi ]; then
+    echo "Erro: Este script requer modo UEFI. Seu sistema está em modo BIOS legado."
     exit 1
 fi
-read -p "Digite o hostname do sistema: " hostname
+
+# Verificar conexão de rede
+check_internet
+check_network_type() {
+    if ip link | grep -q "wlan"; then
+        echo "Conexão Wi-Fi detectada. Certifique-se de que está conectado via 'nmtui'."
+    elif ip link | grep -q "eth"; then
+        echo "Conexão Ethernet detectada. Ativando DHCP..."
+        dhcpcd 2>/dev/null || true
+    else
+        echo "Nenhuma conexão de rede detectada. Configure com 'nmtui' ou 'dhcpcd'."
+        exit 1
+    fi
+}
+check_network_type
+
+# Atualizar espelhos
+echo "Atualizando lista de espelhos com os melhores pings do Brasil..."
+for i in {1..3}; do
+    reflector --country Brazil --fastest 5 --sort rate --save /etc/pacman.d/mirrorlist && break
+    echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
+    sleep 5
+done
+if [ ! -s /etc/pacman.d/mirrorlist ]; then
+    echo "Erro: Lista de espelhos vazia. Usando espelho padrão..."
+    echo "Server = https://mirror.ufscar.br/archlinux/$repo/os/$arch" > /etc/pacman.d/mirrorlist
+fi
+pacman -Syy
+check_error "Falha ao atualizar repositórios"
 
 # Criar arquivo de configuração para archinstall
 cat <<EOF > /tmp/archinstall-config.json
@@ -90,7 +127,11 @@ cat <<EOF > /tmp/archinstall-config.json
         "systemctl enable NetworkManager bluetooth tlp docker sddm fstrim.timer",
         "git clone https://aur.archlinux.org/yay.git /tmp/yay && cd /tmp/yay && makepkg -s --noconfirm && pacman -U --noconfirm yay-*.pkg.tar.zst",
         "su - $user -c 'yay -S --noconfirm --needed code postman swaylock-effects mongodb-bin python-virtualenv'",
-        "su - $user -c 'git clone https://github.com/nagouce/arch-linux-hyprland.git ~/setup && mkdir -p ~/.config && cp -r ~/setup/configs/* ~/.config/ || true'"
+        "su - $user -c 'git clone https://github.com/nagouce/arch-linux-hyprland.git ~/setup && mkdir -p ~/.config && cp -r ~/setup/configs/* ~/.config/ || true'",
+        "echo 'KEYMAP=br' > /etc/vconsole.conf",
+        "mkdir -p /home/$user/.config/hypr",
+        "echo 'input { kb_layout = br }' > /home/$user/.config/hypr/hyprland.conf",
+        "chown -R $user:$user /home/$user/.config"
     ],
     "disk_config": {
         "config_type": "manual_partitioning",
@@ -163,42 +204,6 @@ cat <<EOF > /tmp/archinstall-config.json
     "sys-language": "pt_BR"
 }
 EOF
-
-# Verificar modo UEFI
-if [ ! -d /sys/firmware/efi ]; then
-    echo "Erro: Este script requer modo UEFI. Seu sistema está em modo BIOS legado."
-    exit 1
-fi
-
-# Verificar conexão de rede
-check_internet
-check_network_type() {
-    if ip link | grep -q "wlan"; then
-        echo "Conexão Wi-Fi detectada. Certifique-se de que está conectado via 'nmtui'."
-    elif ip link | grep -q "eth"; then
-        echo "Conexão Ethernet detectada. Ativando DHCP..."
-        dhcpcd 2>/dev/null || true
-    else
-        echo "Nenhuma conexão de rede detectada. Configure com 'nmtui' ou 'dhcpcd'."
-        exit 1
-    fi
-}
-check_network_type
-
-# Atualizar espelhos
-echo "Atualizando lista de espelhos com os melhores pings do Brasil..."
-pacman -Syy reflector
-for i in {1..3}; do
-    reflector --country Brazil --fastest 5 --sort rate --save /etc/pacman.d/mirrorlist && break
-    echo "Tentativa $i: Falha ao atualizar espelhos. Tentando novamente em 5 segundos..."
-    sleep 5
-done
-if [ ! -s /etc/pacman.d/mirrorlist ]; then
-    echo "Erro: Lista de espelhos vazia. Usando espelho padrão..."
-    echo "Server = https://mirror.ufscar.br/archlinux/$repo/os/$arch" > /etc/pacman.d/mirrorlist
-fi
-pacman -Syy
-check_error "Falha ao atualizar repositórios"
 
 # Executar archinstall com configuração
 echo "Iniciando instalação com archinstall..."
