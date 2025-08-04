@@ -10,7 +10,7 @@ check_internet() {
         echo "Tentativa $i: Sem conexão com a internet. Tentando novamente em 5 segundos..."
         sleep 5
     done
-    echo "Erro: Sem conexão com a internet. Instale o NetworkManager e configure com 'nmtui'."
+    echo "Erro: Sem conexão com a internet. Configure com 'nmtui'."
     exit 1
 }
 
@@ -224,9 +224,14 @@ echo "Verificando arquivo JSON..."
 python -m json.tool /tmp/archinstall-config.json > /dev/null
 check_error "Arquivo JSON inválido"
 
+# Testar JSON com archinstall em modo seco
+echo "Testando configuração do archinstall..."
+archinstall --config /tmp/archinstall-config.json --dry-run 2>> /tmp/install.log
+check_error "Falha ao testar configuração do archinstall"
+
 # Executar archinstall com configuração
 echo "Iniciando instalação com archinstall..."
-archinstall --config /tmp/archinstall-config.json --silent 2>> /tmp/install.log
+archinstall --config /tmp/archinstall-config.json 2>> /tmp/install.log
 check_error "Falha ao executar archinstall"
 
 # Configurações adicionais de hardware no chroot
