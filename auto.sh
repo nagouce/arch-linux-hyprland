@@ -25,6 +25,7 @@ cat << EOF > user_configuration.json
   "config_version": "2.8.2",
   "debug": false,
   "disk_config": {
+    "config_type": "manual_partitioning",
     "disk_layouts": [
       {
         "device_path": "/dev/sda",
