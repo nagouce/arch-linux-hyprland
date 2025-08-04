@@ -1,103 +1,81 @@
 #!/bin/bash
 
-# Verifica se está no ambiente live
-if [ ! -d /sys/firmware/efi ]; then
-  echo "Ambiente live não detectado ou não é EFI. Verifique a inicialização."
-  exit 1
-fi
+# Instala o git, se necessário
+pacman -Sy git --noconfirm
 
-# Configura teclado no ambiente live
-loadkeys br-abnt2
+# Clona o repositório
+git clone https://github.com/nagouce/arch-linux-hyprland.git
+cd arch-linux-hyprland
 
-# Verifica conexão com a internet
-if ping -c 4 archlinux.org &> /dev/null; then
-  echo "Conexão com a internet confirmada."
-else
-  echo "Sem conexão com a internet. Configurando Wi-Fi..."
-  iwctl << EOF
-  device list
-  station wlan0 scan
-  station wlan0 get-networks
-  station wlan0 connect "SUA_REDE_WIFI"
-  exit
-EOF
-  read -p "Digite a senha do Wi-Fi: " wifi_password
-  iwctl --passphrase "$wifi_password" station wlan0 connect "SUA_REDE_WIFI"
-  if ! ping -c 4 archlinux.org &> /dev/null; then
-    echo "Falha na conexão com a internet. Verifique e tente novamente."
-    exit 1
-  fi
-fi
-
-# Otimiza mirrors
-pacman -Syy
-reflector --country Brazil --latest 5 --sort rate --save /etc/pacman.d/mirrorlist
-pacman -Syy
-
-# Verifica o disco
-echo "Discos disponíveis:"
-lsblk
-read -p "Digite o dispositivo do disco para instalação (ex.: /dev/sda): " disk
-if [ ! -b "$disk" ]; then
-  echo "Disco $disk não encontrado. Verifique com 'lsblk' e tente novamente."
-  exit 1
-fi
-
-# Limpa partições existentes (opcional)
-read -p "Deseja limpar todas as partições do disco $disk? (s/n): " wipe_disk
-if [ "$wipe_disk" = "s" ]; then
-  echo "Limpando partições do disco $disk..."
-  wipefs -a "$disk"
-fi
-
-# Cria arquivo de configuração para o archinstall
-cat > config.json << EOL
+# Cria o arquivo user_configuration.json
+cat << EOF > user_configuration.json
 {
-  "audio": "pipewire",
-  "bootloader": "grub",
-  "custom-commands": [
-    "systemctl enable bluetooth",
-    "systemctl enable NetworkManager",
-    "systemctl enable tlp",
-    "systemctl enable sshd",
-    "systemctl enable sddm",
-    "gpasswd -a \$USER wheel",
-    "echo 'pt_BR.UTF-8 UTF-8' > /etc/locale.gen",
-    "locale-gen",
-    "echo 'LANG=pt_BR.UTF-8' > /etc/locale.conf",
-    "echo 'KEYMAP=br-abnt2' > /etc/vconsole.conf",
-    "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB",
-    "grub-mkconfig -o /boot/grub/grub.cfg"
-  ],
-  "disk-config": {
-    "device": "$disk",
-    "partitions": [
+  "audio": {
+    "audio": "pipewire"
+  },
+  "bootloader": "systemd-boot",
+  "config_version": "2.8.2",
+  "debug": false,
+  "disk_config": {
+    "disk_layouts": [
       {
-        "mountpoint": "/",
-        "filesystem": "btrfs",
-        "size": "50%"
-      },
-      {
-        "mountpoint": "/home",
-        "filesystem": "btrfs",
-        "size": "45%"
-      },
-      {
-        "type": "swap",
-        "size": "8GB"
+        "device_path": "/dev/sda",
+        "partitions": [
+          {
+            "boot": true,
+            "encrypted": false,
+            "filesystem": {
+              "format": "fat32"
+            },
+            "mountpoint": "/boot",
+            "size": "512MiB",
+            "type": "primary"
+          },
+          {
+            "encrypted": false,
+            "filesystem": {
+              "format": "swap"
+            },
+            "mountpoint": "swap",
+            "size": "4GiB",
+            "type": "primary"
+          },
+          {
+            "encrypted": false,
+            "filesystem": {
+              "format": "ext4"
+            },
+            "mountpoint": "/",
+            "size": "50GiB",
+            "type": "primary"
+          },
+          {
+            "encrypted": false,
+            "filesystem": {
+              "format": "ext4"
+            },
+            "mountpoint": "/home",
+            "size": "100%FREE",
+            "type": "primary"
+          }
+        ],
+        "wipe": true
       }
     ]
   },
-  "hostname": "arch-notebook",
+  "hostname": "Sociedade Secreta",
   "kernels": ["linux-zen"],
-  "locale": {
+  "locale_config": {
     "kb_layout": "br",
-    "language": "pt_BR",
-    "timezone": "America/Sao_Paulo"
+    "sys_enc": "UTF-8",
+    "sys_lang": "pt_BR"
   },
-  "mirror-regions": ["Brazil"],
-  "network": "nm",
+  "network_config": {
+    "type": "nm"
+  },
+  "no_pkg_lookups": false,
   "ntp": true,
+  "offline": false,
   "packages": [
     "bash-completion",
     "bluez",
@@ -129,6 +107,7 @@ cat > config.json << EOL
     "make",
     "mariadb",
     "mesa",
+    "mongodb",
     "nano",
     "neovim",
     "network-manager-applet",
@@ -144,6 +123,7 @@ cat > config.json << EOL
     "pipewire-audio",
     "pipewire-pulse",
     "poetry",
+    "postman",
     "postgresql",
     "python",
     "python-pip",
@@ -157,45 +137,50 @@ cat > config.json << EOL
     "thunar-archive-plugin",
     "tlp",
     "unzip",
-    "python-virtualenv",
+    "virtualenv",
     "vulkan-intel",
     "waybar",
     "wget",
     "wireplumber",
     "xdg-desktop-portal",
     "xdg-desktop-portal-hyprland",
-    "zip",
-    "sddm",
-    "perl-io-socket-ssl",
-    "perl-authen-sasl",
-    "perl-mediawiki-api",
-    "perl-datetime-format-iso8601",
-    "perl-lwp-protocol-https",
-    "perl-cgi",
-    "subversion",
-    "libsecret",
-    "less"
+    "zip"
   ],
-  "profile": "minimal",
-  "root-password": "sua_senha_root",
-  "user": {
-    "name": "seu_usuario",
-    "password": "sua_senha_usuario",
-    "sudo": true
-  }
+  "parallel_downloads": 0,
+  "profile_config": {
+    "profile": "hyprland"
+  },
+  "services": [
+    "bluetooth",
+    "docker",
+    "NetworkManager",
+    "sshd",
+    "tlp"
+  ],
+  "swap": true,
+  "timezone": "America/Sao_Paulo",
+  "users": [
+    {
+      "username": "nagouce",
+      "password": "$6$exemplo_hash",
+      "sudo": true
+    }
+  ]
 }
-EOL
+EOF
 
-# Executa o archinstall com a configuração
-archinstall --config config.json --silent
+# Gera o hash da senha
+echo "0247" | openssl passwd -6 -stdin > password_hash
+sed -i "s|\$6\$exemplo_hash|$(cat password_hash)|" user_configuration.json
+rm password_hash
 
-# Verifica se a instalação foi bem-sucedida
+# Executa o archinstall
+archinstall --config user_configuration.json
+
+# Verifica o resultado
 if [ $? -eq 0 ]; then
-  echo "Instalação concluída com sucesso! Reiniciando em 10 segundos..."
-  sleep 10
-  reboot
+  echo "Instalação concluída! Reinicie o sistema com 'reboot'."
 else
   echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
-  cat /var/log/archinstall/errors.log
   exit 1
 fi
