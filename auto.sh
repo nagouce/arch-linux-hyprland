@@ -23,9 +23,15 @@ check_error() {
     fi
 }
 
-# Instalar ferramentas necessárias no ambiente live
-pacman -S --noconfirm lsof dosfstools smartmontools git reflector
-check_error "Falha ao instalar lsof, dosfstools, smartmontools, git ou reflector no ambiente live"
+# Instalar ferramentas necessárias
+echo "Instalando ferramentas necessárias..."
+pacman -S --noconfirm lsof dosfstools smartmontools git reflector python-pip
+check_error "Falha ao instalar ferramentas no ambiente live"
+
+# Atualizar archinstall
+echo "Atualizando archinstall..."
+pip install --upgrade archinstall
+check_error "Falha ao atualizar archinstall"
 
 # Aviso inicial
 echo "Bem-vindo à instalação automatizada do Arch Linux com Hyprland!"
@@ -121,7 +127,7 @@ check_error "Falha ao atualizar repositórios"
 cat <<EOF > /tmp/archinstall-config.json
 {
     "audio": "pipewire",
-    "bootloader": "grub",
+    "bootloader": "grub-install",
     "custom-commands": [
         "pacman -S --noconfirm hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww sddm polkit-gnome wireplumber pavucontrol brightnessctl bluez bluez-utils blueman network-manager-applet thunar thunar-archive-plugin ttf-jetbrains-mono-nerd noto-fonts bash-completion btop clang curl dbeaver docker docker-compose dunst feh fwupd gcc go htop jupyterlab kdeconnect libinput lm_sensors make mariadb mesa neovim nginx nodejs npm openssh poetry postgresql python python-pip redis ripgrep rust sof-firmware starship tlp unzip zip",
         "systemctl enable NetworkManager bluetooth tlp docker sddm fstrim.timer",
@@ -145,7 +151,9 @@ cat <<EOF > /tmp/archinstall-config.json
                         "start": "1MiB",
                         "size": "512MiB",
                         "mountpoint": "/boot/efi",
-                        "filesystem": "fat32",
+                        "filesystem": {
+                            "format": "fat32"
+                        },
                         "flags": ["Boot", "ESP"]
                     },
                     {
@@ -153,21 +161,27 @@ cat <<EOF > /tmp/archinstall-config.json
                         "start": "513MiB",
                         "size": "8192MiB",
                         "mountpoint": null,
-                        "filesystem": "linux-swap"
+                        "filesystem": {
+                            "format": "swap"
+                        }
                     },
                     {
                         "type": "primary",
                         "start": "8705MiB",
                         "size": "50000MiB",
                         "mountpoint": "/",
-                        "filesystem": "ext4"
+                        "filesystem": {
+                            "format": "ext4"
+                        }
                     },
                     {
                         "type": "primary",
                         "start": "58705MiB",
                         "size": "-1",
                         "mountpoint": "/home",
-                        "filesystem": "ext4"
+                        "filesystem": {
+                            "format": "ext4"
+                        }
                     }
                 ]
             }
@@ -177,9 +191,8 @@ cat <<EOF > /tmp/archinstall-config.json
     "kernels": ["linux-zen"],
     "locale_config": {
         "kb_layout": "br",
-        "sys_enc": "UTF-8",
-        "sys_lang": "pt_BR.UTF-8",
-        "timezone": "America/Sao_Paulo"
+        "sys_encoding": "UTF-8",
+        "sys_language": "pt_BR"
     },
     "mirror_config": {
         "mirror_regions": {
@@ -199,15 +212,13 @@ cat <<EOF > /tmp/archinstall-config.json
             "sudo": true
         }
     ],
-    "root-password": "$pass",
-    "sys-encoding": "utf-8",
-    "sys-language": "pt_BR"
+    "root-password": "$pass"
 }
 EOF
 
 # Executar archinstall com configuração
 echo "Iniciando instalação com archinstall..."
-archinstall --config /tmp/archinstall-config.json --silent --skip-ntp
+archinstall --config /tmp/archinstall-config.json --silent --skip-ntp 2>> /tmp/install.log
 check_error "Falha ao executar archinstall"
 
 # Configurações adicionais de hardware no chroot
