@@ -12,6 +12,10 @@ if ! ping -c 1 archlinux.org &> /dev/null; then
   exit 1
 fi
 
+# Atualiza o archinstall para a versão mais recente
+echo "Atualizando o archinstall..."
+pacman -Syu archinstall --noconfirm
+
 # Gera o hash da senha
 echo "0247" | openssl passwd -6 -stdin > password_hash
 
@@ -153,7 +157,10 @@ cat << EOF > user_configuration.json
   ],
   "parallel_downloads": 0,
   "profile_config": {
-    "profile": "hyprland"
+    "profile": {
+      "path": "hyprland",
+      "details": []
+    }
   },
   "services": [
     "bluetooth",
