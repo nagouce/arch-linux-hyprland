@@ -10,7 +10,7 @@ check_internet() {
         echo "Tentativa $i: Sem conexão com a internet. Tentando novamente em 5 segundos..."
         sleep 5
     done
-    echo "Erro: Sem conexão com a internet. Use 'nmtui' para Wi-Fi ou 'dhcpcd' para Ethernet."
+    echo "Erro: Sem conexão com a internet. Instale o NetworkManager e configure com 'nmtui'."
     exit 1
 }
 
@@ -25,7 +25,7 @@ check_error() {
 
 # Instalar ferramentas necessárias
 echo "Instalando ferramentas necessárias..."
-pacman -S --noconfirm lsof dosfstools smartmontools git reflector
+pacman -S --noconfirm lsof dosfstools smartmontools git reflector networkmanager
 check_error "Falha ao instalar ferramentas no ambiente live"
 
 # Aviso inicial
@@ -93,11 +93,14 @@ fi
 check_internet
 check_network_type() {
     if ip link | grep -q "wlan"; then
-        echo "Conexão Wi-Fi detectada. Certifique-se de que está conectado via 'nmtui'."
+        echo "Conexão Wi-Fi detectada. Configurando com nmtui..."
+        systemctl start NetworkManager
         nmtui
+        check_internet
     elif ip link | grep -q "eth"; then
         echo "Conexão Ethernet detectada. Ativando DHCP..."
         dhcpcd 2>/dev/null || true
+        check_internet
     else
         echo "Nenhuma conexão de rede detectada. Configure com 'nmtui' ou 'dhcpcd'."
         exit 1
