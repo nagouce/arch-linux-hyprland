@@ -29,46 +29,42 @@ cat << EOF > user_configuration.json
     "disk_layouts": [
       {
         "device_path": "/dev/sda",
+        "wipe": true,
         "partitions": [
           {
+            "type": "primary",
             "boot": true,
-            "encrypted": false,
             "filesystem": {
               "format": "fat32"
             },
             "mountpoint": "/boot",
-            "size": "512MiB",
-            "type": "primary"
+            "size": "512MiB"
           },
           {
-            "encrypted": false,
+            "type": "primary",
             "filesystem": {
               "format": "swap"
             },
             "mountpoint": "swap",
-            "size": "4GiB",
-            "type": "primary"
+            "size": "4GiB"
           },
           {
-            "encrypted": false,
+            "type": "primary",
             "filesystem": {
               "format": "ext4"
             },
             "mountpoint": "/",
-            "size": "50GiB",
-            "type": "primary"
+            "size": "50GiB"
           },
           {
-            "encrypted": false,
+            "type": "primary",
             "filesystem": {
               "format": "ext4"
             },
             "mountpoint": "/home",
-            "size": "100%FREE",
-            "type": "primary"
+            "size": "100%FREE"
           }
-        ],
-        "wipe": true
+        ]
       }
     ]
   },
@@ -183,7 +179,12 @@ rm password_hash
 
 # Executa o archinstall
 echo "Iniciando a instalação automatizada com archinstall..."
-archinstall --config user_configuration.json
+archinstall --config user_configuration.json --silent || {
+  echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
+  echo "Tentando instalação interativa para configurar linguagem e particionamento manualmente..."
+  archinstall
+  exit 1
+}
 
 # Verifica o resultado
 if [ $? -eq 0 ]; then
