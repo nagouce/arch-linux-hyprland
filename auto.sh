@@ -1,203 +1,122 @@
 #!/bin/bash
 
-# Verifica se está no ambiente ao vivo do Arch Linux
-if [ ! -f /etc/arch-release ]; then
-  echo "Este script deve ser executado no ambiente ao vivo do Arch Linux."
-  exit 1
+# Script para instalar pacotes no Arch Linux usando pacman
+# Execute com sudo ou como root após clonar do GitHub
+
+# Verifica se o script está sendo executado como root
+if [[ $EUID -ne 0 ]]; then
+   echo "Este script precisa ser executado como root. Use sudo."
+   exit 1
 fi
 
-# Verifica conexão com a internet
-if ! ping -c 1 archlinux.org &> /dev/null; then
-  echo "Conecte-se à internet (use 'nmtui' para Wi-Fi) e tente novamente."
-  exit 1
-fi
+# Atualiza o sistema e o cache do pacman
+echo "Atualizando o sistema..."
+pacman -Syu --noconfirm
 
-# Atualiza o archinstall
-echo "Atualizando o archinstall..."
-pacman -Syu archinstall --noconfirm
+# Lista de pacotes a serem instalados (extraída do pacotes.txt)
+PACOTES=(
+    bash-completion
+    bluez
+    bluez-utils
+    blueman
+    btop
+    clang
+    code
+    curl
+    dbeaver
+    docker
+    docker-compose
+    dunst
+    efibootmgr
+    feh
+    fwupd
+    gcc
+    git
+    go
+    htop
+    hyprland
+    intel-media-driver
+    intel-ucode
+    jupyterlab
+    kdeconnect
+    kitty
+    libinput
+    linux-zen
+    lm_sensors
+    make
+    mariadb
+    mesa
+    mongodb
+    nano
+    neovim
+    network-manager-applet
+    networkmanager
+    nginx
+    nodejs
+    npm
+    noto-fonts
+    openssh
+    pavucontrol
+    pipewire
+    pipewire-alsa
+    pipewire-audio
+    pipewire-pulse
+    poetry
+    postman
+    postgresql
+    python
+    python-pip
+    redis
+    ripgrep
+    rofi
+    rust
+    sof-firmware
+    starship
+    thunar
+    thunar-archive-plugin
+    tlp
+    unzip
+    virtualenv
+    vulkan-intel
+    waybar
+    wget
+    wireplumber
+    xdg-desktop-portal
+    xdg-desktop-portal-hyprland
+    zip
+)
 
-# Gera o hash da senha
-echo "0247" | openssl passwd -6 -stdin > password_hash
+# Instala os pacotes listados
+echo "Instalando pacotes..."
+pacman -S --noconfirm "${PACOTES[@]}"
 
-# Cria o arquivo de configuração do archinstall
-cat << EOF > user_configuration.json
-{
-  "audio": {
-    "audio": "pipewire"
-  },
-  "bootloader": "systemd-boot",
-  "config_version": "2.8.2",
-  "debug": false,
-  "disk_config": {
-    "config_type": "manual_partitioning",
-    "disk_layouts": [
-      {
-        "device_path": "/dev/sda",
-        "wipe": true,
-        "partitions": [
-          {
-            "type": "primary",
-            "boot": true,
-            "filesystem": {
-              "format": "fat32"
-            },
-            "mountpoint": "/boot",
-            "size": "512MiB"
-          },
-          {
-            "type": "primary",
-            "filesystem": {
-              "format": "swap"
-            },
-            "mountpoint": "swap",
-            "size": "4GiB"
-          },
-          {
-            "type": "primary",
-            "filesystem": {
-              "format": "ext4"
-            },
-            "mountpoint": "/",
-            "size": "100GiB"
-          },
-          {
-            "type": "primary",
-            "filesystem": {
-              "format": "ext4"
-            },
-            "mountpoint": "/home",
-            "size": "100%FREE"
-          }
-        ]
-      }
-    ]
-  },
-  "hostname": "Sociedade Secreta",
-  "kernels": ["linux-zen"],
-  "locale_config": {
-    "kb_layout": "br",
-    "sys_enc": "UTF-8",
-    "sys_lang": "pt_BR"
-  },
-  "network_config": {
-    "type": "nm"
-  },
-  "no_pkg_lookups": false,
-  "ntp": true,
-  "offline": false,
-  "packages": [
-    "bash-completion",
-    "bluez",
-    "bluez-utils",
-    "blueman",
-    "btop",
-    "clang",
-    "code",
-    "curl",
-    "dbeaver",
-    "docker",
-    "docker-compose",
-    "dunst",
-    "efibootmgr",
-    "feh",
-    "fwupd",
-    "gcc",
-    "git",
-    "go",
-    "htop",
-    "hyprland",
-    "intel-media-driver",
-    "intel-ucode",
-    "jupyterlab",
-    "kdeconnect",
-    "kitty",
-    "libinput",
-    "lm_sensors",
-    "make",
-    "mariadb",
-    "mesa",
-    "mongodb",
-    "nano",
-    "neovim",
-    "network-manager-applet",
-    "networkmanager",
-    "nginx",
-    "nodejs",
-    "npm",
-    "noto-fonts",
-    "openssh",
-    "pavucontrol",
-    "pipewire",
-    "pipewire-alsa",
-    "pipewire-audio",
-    "pipewire-pulse",
-    "poetry",
-    "postgresql",
-    "python",
-    "python-pip",
-    "redis",
-    "ripgrep",
-    "rofi",
-    "rust",
-    "sof-firmware",
-    "starship",
-    "thunar",
-    "thunar-archive-plugin",
-    "tlp",
-    "unzip",
-    "virtualenv",
-    "vulkan-intel",
-    "waybar",
-    "wget",
-    "wireplumber",
-    "xdg-desktop-portal",
-    "xdg-desktop-portal-hyprland",
-    "zip"
-  ],
-  "parallel_downloads": 0,
-  "profile_config": {
-    "profile": {
-      "path": "/usr/lib/python3.13/site-packages/archinstall/profiles/hyprland.py",
-      "details": []
-    }
-  },
-  "services": [
-    "bluetooth",
-    "docker",
-    "NetworkManager",
-    "sshd",
-    "tlp"
-  ],
-  "swap": true,
-  "timezone": "America/Sao_Paulo",
-  "users": [
-    {
-      "username": "nagouce",
-      "password": "$(cat password_hash)",
-      "sudo": true
-    }
-  ]
-}
-EOF
+# Habilita serviços essenciais
+echo "Habilitando serviços..."
+systemctl enable bluetooth
+systemctl enable docker
+systemctl enable mariadb
+systemctl enable postgresql
+systemctl enable nginx
+systemctl enable NetworkManager
+systemctl enable tlp
 
-# Remove o arquivo temporário do hash
-rm password_hash
+# Inicia serviços imediatamente (opcional, remova se não quiser iniciar agora)
+echo "Iniciando serviços..."
+systemctl start bluetooth
+systemctl start docker
+systemctl start mariadb
+systemctl start postgresql
+systemctl start nginx
+systemctl start NetworkManager
+systemctl start tlp
 
-# Executa o archinstall
-echo "Iniciando a instalação automatizada com archinstall..."
-archinstall --config user_configuration.json --silent || {
-  echo "Erro durante a instalação. Fazendo upload do log para 0x0.st..."
-  curl -F'file=@/var/log/archinstall/install.log' https://0x0.st
-  echo "Tentando instalação interativa para configurar linguagem e particionamento manualmente..."
-  archinstall
-  exit 1
-}
+# Configurações adicionais para Hyprland
+echo "Configurando variáveis de ambiente para Hyprland..."
+echo "XDG_SESSION_TYPE=wayland" >> /etc/environment
+echo "XDG_SESSION_DESKTOP=Hyprland" >> /etc/environment
+echo "XDG_CURRENT_DESKTOP=Hyprland" >> /etc/environment
 
-# Verifica o resultado
-if [ $? -eq 0 ]; then
-  echo "Instalação concluída! Reinicie o sistema com 'reboot'."
-else
-  echo "Erro durante a instalação. Fazendo upload do log para 0x0.st..."
-  curl -F'file=@/var/log/archinstall/install.log' https://0x0.st
-  exit 1
-fi
+# Mensagem de conclusão
+echo "Instalação concluída! Reinicie o sistema para garantir que todas as configurações sejam aplicadas."
+
+exit 0
