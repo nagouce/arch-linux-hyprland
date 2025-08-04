@@ -25,13 +25,8 @@ check_error() {
 
 # Instalar ferramentas necessárias
 echo "Instalando ferramentas necessárias..."
-pacman -S --noconfirm lsof dosfstools smartmontools git reflector python-pip
+pacman -S --noconfirm lsof dosfstools smartmontools git reflector
 check_error "Falha ao instalar ferramentas no ambiente live"
-
-# Atualizar archinstall
-echo "Atualizando archinstall..."
-pip install --upgrade archinstall
-check_error "Falha ao atualizar archinstall"
 
 # Aviso inicial
 echo "Bem-vindo à instalação automatizada do Arch Linux com Hyprland!"
@@ -99,6 +94,7 @@ check_internet
 check_network_type() {
     if ip link | grep -q "wlan"; then
         echo "Conexão Wi-Fi detectada. Certifique-se de que está conectado via 'nmtui'."
+        nmtui
     elif ip link | grep -q "eth"; then
         echo "Conexão Ethernet detectada. Ativando DHCP..."
         dhcpcd 2>/dev/null || true
@@ -126,7 +122,9 @@ check_error "Falha ao atualizar repositórios"
 # Criar arquivo de configuração para archinstall
 cat <<EOF > /tmp/archinstall-config.json
 {
-    "audio": "pipewire",
+    "audio_config": {
+        "audio": "pipewire"
+    },
     "bootloader": "grub-install",
     "custom-commands": [
         "pacman -S --noconfirm hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww sddm polkit-gnome wireplumber pavucontrol brightnessctl bluez bluez-utils blueman network-manager-applet thunar thunar-archive-plugin ttf-jetbrains-mono-nerd noto-fonts bash-completion btop clang curl dbeaver docker docker-compose dunst feh fwupd gcc go htop jupyterlab kdeconnect libinput lm_sensors make mariadb mesa neovim nginx nodejs npm openssh poetry postgresql python python-pip redis ripgrep rust sof-firmware starship tlp unzip zip",
@@ -191,8 +189,8 @@ cat <<EOF > /tmp/archinstall-config.json
     "kernels": ["linux-zen"],
     "locale_config": {
         "kb_layout": "br",
-        "sys_encoding": "UTF-8",
-        "sys_language": "pt_BR"
+        "sys_language": "pt_BR",
+        "sys_encoding": "UTF-8"
     },
     "mirror_config": {
         "mirror_regions": {
@@ -212,13 +210,20 @@ cat <<EOF > /tmp/archinstall-config.json
             "sudo": true
         }
     ],
-    "root-password": "$pass"
+    "root-password": "$pass",
+    "timezone": "America/Sao_Paulo",
+    "ntp": true
 }
 EOF
 
+# Verificar JSON
+echo "Verificando arquivo JSON..."
+python -m json.tool /tmp/archinstall-config.json > /dev/null
+check_error "Arquivo JSON inválido"
+
 # Executar archinstall com configuração
 echo "Iniciando instalação com archinstall..."
-archinstall --config /tmp/archinstall-config.json --silent --skip-ntp 2>> /tmp/install.log
+archinstall --config /tmp/archinstall-config.json --silent 2>> /tmp/install.log
 check_error "Falha ao executar archinstall"
 
 # Configurações adicionais de hardware no chroot
