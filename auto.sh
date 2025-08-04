@@ -1,3 +1,22 @@
+#!/bin/bash
+
+# Verifica se está no ambiente ao vivo do Arch Linux
+if [ ! -f /etc/arch-release ]; then
+  echo "Este script deve ser executado no ambiente ao vivo do Arch Linux."
+  exit 1
+fi
+
+# Verifica conexão com a internet
+if ! ping -c 1 archlinux.org &> /dev/null; then
+  echo "Conecte-se à internet (use 'nmtui' para Wi-Fi) e tente novamente."
+  exit 1
+fi
+
+# Gera o hash da senha
+echo "0247" | openssl passwd -6 -stdin > password_hash
+
+# Cria o arquivo de configuração do archinstall
+cat << EOF > user_configuration.json
 {
   "audio": {
     "audio": "pipewire"
@@ -151,8 +170,24 @@
   "users": [
     {
       "username": "nagouce",
-      "password": "$6$exemplo_hash",
+      "password": "$(cat password_hash)",
       "sudo": true
     }
   ]
 }
+EOF
+
+# Remove o arquivo temporário do hash
+rm password_hash
+
+# Executa o archinstall
+echo "Iniciando a instalação automatizada com archinstall..."
+archinstall --config user_configuration.json
+
+# Verifica o resultado
+if [ $? -eq 0 ]; then
+  echo "Instalação concluída! Reinicie o sistema com 'reboot'."
+else
+  echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
+  exit 1
+fi
