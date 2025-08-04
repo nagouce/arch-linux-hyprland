@@ -107,6 +107,15 @@ if lsof "$disk" "$disk"1 2>/dev/null | grep -q .; then
     sleep 2
 fi
 
+# Forçar liberação do disco
+echo "Forçando liberação do disco $disk..."
+umount -R /mnt 2>/dev/null || true
+swapoff -a 2>/dev/null || true
+echo 1 > /proc/sys/kernel/sysrq
+echo u > /proc/sysrq-trigger
+sync
+sleep 2
+
 # Solicitar usuário e senha
 read -p "Digite o nome do usuário: " user
 read -s -p "Digite a senha do usuário: " pass
@@ -213,6 +222,10 @@ wipefs -a "${disk}1" 2>/dev/null || true
 sgdisk --zap-all "$disk" 2>> /tmp/install.log
 partprobe "$disk"
 sync
+echo 1 > /proc/sys/kernel/sysrq
+echo u > /proc/sysrq-trigger
+sync
+sleep 2
 parted -s "$disk" mklabel gpt
 parted -s "$disk" mkpart EFI fat32 1MiB 513MiB
 parted -s "$disk" set 1 esp on
@@ -221,11 +234,18 @@ parted -s "$disk" mkpart primary ext4 8705MiB 58705MiB
 parted -s "$disk" mkpart primary ext4 58705MiB 100%
 partprobe "$disk"
 sync
+for i in {1..3}; do
+    blockdev --rereadpt "$disk" && break
+    echo "Tentativa $i: Falha ao atualizar tabela de partições. Tentando novamente..."
+    echo 1 > /proc/sys/kernel/sysrq
+    echo u > /proc/sysrq-trigger
+    sync
+    sleep 2
+done
 check_error "Falha ao particionar o disco"
 
 # Verificar estado do disco
 echo "Verificando estado do disco $disk..."
-blockdev --rereadpt "$disk"
 dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
 if dmesg | grep -i "error.*$disk"; then
     echo "Erro: Problemas detectados no disco $disk. Verifique /tmp/install.log."
