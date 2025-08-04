@@ -12,7 +12,7 @@ if ! ping -c 1 archlinux.org &> /dev/null; then
   exit 1
 fi
 
-# Atualiza o archinstall para a versão mais recente
+# Atualiza o archinstall
 echo "Atualizando o archinstall..."
 pacman -Syu archinstall --noconfirm
 
@@ -58,7 +58,7 @@ cat << EOF > user_configuration.json
               "format": "ext4"
             },
             "mountpoint": "/",
-            "size": "50GiB"
+            "size": "100GiB"
           },
           {
             "type": "primary",
@@ -132,7 +132,6 @@ cat << EOF > user_configuration.json
     "pipewire-audio",
     "pipewire-pulse",
     "poetry",
-    "postman",
     "postgresql",
     "python",
     "python-pip",
@@ -158,7 +157,7 @@ cat << EOF > user_configuration.json
   "parallel_downloads": 0,
   "profile_config": {
     "profile": {
-      "path": "hyprland",
+      "path": "/usr/lib/python3.13/site-packages/archinstall/profiles/hyprland.py",
       "details": []
     }
   },
@@ -187,7 +186,8 @@ rm password_hash
 # Executa o archinstall
 echo "Iniciando a instalação automatizada com archinstall..."
 archinstall --config user_configuration.json --silent || {
-  echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
+  echo "Erro durante a instalação. Fazendo upload do log para 0x0.st..."
+  curl -F'file=@/var/log/archinstall/install.log' https://0x0.st
   echo "Tentando instalação interativa para configurar linguagem e particionamento manualmente..."
   archinstall
   exit 1
@@ -197,6 +197,7 @@ archinstall --config user_configuration.json --silent || {
 if [ $? -eq 0 ]; then
   echo "Instalação concluída! Reinicie o sistema com 'reboot'."
 else
-  echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
+  echo "Erro durante a instalação. Fazendo upload do log para 0x0.st..."
+  curl -F'file=@/var/log/archinstall/install.log' https://0x0.st
   exit 1
 fi
