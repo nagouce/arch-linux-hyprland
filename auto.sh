@@ -81,14 +81,25 @@ PACOTES=(
     "zip"
 )
 
-# Cria um arquivo de configuração JSON para o archinstall
+# Cria um arquivo de configuração JSON para o archinstall sem usar jq
 CONFIG_FILE="/tmp/archinstall-config.json"
 
-cat << EOF > $CONFIG_FILE
-{
-  "additional_packages": $(printf '%s\n' "${PACOTES[@]}" | jq -R . | jq -s .)
-}
-EOF
+# Inicia o arquivo JSON
+echo "{" > $CONFIG_FILE
+echo "  \"additional_packages\": [" >> $CONFIG_FILE
+
+# Adiciona os pacotes ao JSON, com vírgulas entre eles, exceto no último
+for ((i=0; i<${#PACOTES[@]}; i++)); do
+    if [ $i -eq $((${#PACOTES[@]}-1)) ]; then
+        echo "    \"${PACOTES[$i]}\"" >> $CONFIG_FILE
+    else
+        echo "    \"${PACOTES[$i]}\"," >> $CONFIG_FILE
+    fi
+done
+
+# Fecha o arquivo JSON
+echo "  ]" >> $CONFIG_FILE
+echo "}" >> $CONFIG_FILE
 
 # Executa o archinstall com o arquivo de configuração
 echo "Executando archinstall com os pacotes pré-configurados..."
