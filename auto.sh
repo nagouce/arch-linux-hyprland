@@ -1,14 +1,3 @@
-#!/bin/bash
-
-# Instala o git, se necessário
-pacman -Sy git --noconfirm
-
-# Clona o repositório
-git clone https://github.com/nagouce/arch-linux-hyprland.git
-cd arch-linux-hyprland
-
-# Cria o arquivo user_configuration.json
-cat << EOF > user_configuration.json
 {
   "audio": {
     "audio": "pipewire"
@@ -167,20 +156,3 @@ cat << EOF > user_configuration.json
     }
   ]
 }
-EOF
-
-# Gera o hash da senha
-echo "0247" | openssl passwd -6 -stdin > password_hash
-sed -i "s|\$6\$exemplo_hash|$(cat password_hash)|" user_configuration.json
-rm password_hash
-
-# Executa o archinstall
-archinstall --config user_configuration.json
-
-# Verifica o resultado
-if [ $? -eq 0 ]; then
-  echo "Instalação concluída! Reinicie o sistema com 'reboot'."
-else
-  echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
-  exit 1
-fi
