@@ -267,37 +267,39 @@ echo "[3/9] → Formatando partições..."
 umount "${disk}1" 2>/dev/null || true
 wipefs -a "${disk}1" 2>> /tmp/install.log || true
 fuser -k -m "${disk}1" 2>/dev/null || true
-if ! mkfs.vfat -F 32 -I -n EFI "${disk}1" 2>> /tmp/install.log; then
-    echo "Aviso: mkfs.vfat falhou. Tentando mkfs.fat como alternativa..."
-    mkfs.fat -F32 -n EFI "${disk}1" 2>> /tmp/install.log
+sync
+sleep 2
+for i in {1..3}; do
+    if mkfs.vfat -F 32 -n EFI "${disk}1" 2>> /tmp/install.log; then
+        break
+    fi
+    echo "Tentativa $i: mkfs.vfat falhou. Tentando mkfs.fat..."
+    wipefs -a "${disk}1" 2>> /tmp/install.log || true
+    if mkfs.fat -F32 -n EFI "${disk}1" 2>> /tmp/install.log; then
+        break
+    fi
+    sleep 2
+done
+if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
+    echo "Erro: Falha persistente ao formatar ${disk}1 como FAT32."
+    echo "Verifique erros com 'dmesg | grep sda' e saúde do disco com 'smartctl -a $disk'."
+    dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
+    lsof "${disk}1" 2>> /tmp/install.log || true
+    fuser -m "${disk}1" 2>> /tmp/install.log || true
+    exit 1
 fi
 sync
-mkswap -L SWAP "${disk}2"
-swapon "${disk}2"
-mkfs.ext4 -L ROOT "${disk}3"
-mkfs.ext4 -L HOME "${disk}4"
+mkswap -L SWAP "${disk}2" 2>> /tmp/install.log
+swapon "${disk}2" 2>> /tmp/install.log
+mkfs.ext4 -L ROOT "${disk}3" 2>> /tmp/install.log
+mkfs.ext4 -L HOME "${disk}4" 2>> /tmp/install.log
 sync
 check_error "Falha ao formatar partições"
 
 # Verificar formatação da partição EFI
 if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
-    echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32. Tentando novamente..."
-    umount "${disk}1" 2>/dev/null || true
-    wipefs -a "${disk}1" 2>> /tmp/install.log || true
-    fuser -k -m "${disk}1" 2>/dev/null || true
-    if ! mkfs.vfat -F 32 -I -n EFI "${disk}1" 2>> /tmp/install.log; then
-        echo "Aviso: mkfs.vfat falhou novamente. Tentando mkfs.fat..."
-        mkfs.fat -F32 -n EFI "${disk}1" 2>> /tmp/install.log
-    fi
-    sync
-    if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
-        echo "Erro: Falha persistente ao formatar ${disk}1 como FAT32."
-        echo "Verifique erros com 'dmesg | grep sda' e saúde do disco com 'smartctl -a $disk'."
-        dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
-        lsof "${disk}1" 2>> /tmp/install.log || true
-        fuser -m "${disk}1" 2>> /tmp/install.log || true
-        exit 1
-    fi
+    echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32 após tentativas."
+    exit 1
 fi
 
 echo "[4/9] → Montando partições..."
