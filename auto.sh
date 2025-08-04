@@ -31,7 +31,7 @@ fi
 
 # Otimiza mirrors
 pacman -Syy
-reflector --country Brazil --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
+reflector --country Brazil --latest 5 --sort rate --save /etc/pacman.d/mirrorlist
 pacman -Syy
 
 # Verifica o disco
@@ -43,7 +43,7 @@ if [ ! -b "$disk" ]; then
   exit 1
 fi
 
-# Limpa partições existentes (opcional, com confirmação)
+# Limpa partições existentes (opcional)
 read -p "Deseja limpar todas as partições do disco $disk? (s/n): " wipe_disk
 if [ "$wipe_disk" = "s" ]; then
   echo "Limpando partições do disco $disk..."
@@ -188,10 +188,10 @@ EOL
 
 # Verifica pacotes antes da instalação
 echo "Verificando disponibilidade dos pacotes..."
-pacman -Sp --needed --noconfirm $(cat config.json | grep '"packages"' -A 100 | grep -Po '"\K[^"]+' | tr '\n' ' ') > /dev/null
+pacman -Sp --needed --noconfirm $(cat config.json | grep '"packages"' -A 100 | grep -Po '"\K[^"]+' | tr '\n' ' ') > /tmp/pacman_check.log 2>&1
 if [ $? -ne 0 ]; then
-  echo "Erro: Alguns pacotes não foram encontrados. Verifique os logs em /tmp/pacman_check.log."
-  pacman -Sp --needed --noconfirm $(cat config.json | grep '"packages"' -A 100 | grep -Po '"\K[^"]+' | tr '\n' ' ') > /tmp/pacman_check.log 2>&1
+  echo "Erro: Alguns pacotes não foram encontrados. Verifique /tmp/pacman_check.log."
+  cat /tmp/pacman_check.log
   exit 1
 fi
 
