@@ -6,7 +6,7 @@ if [ ! -d /sys/firmware/efi ]; then
   exit 1
 fi
 
-# Configura teclado
+# Configura teclado no ambiente live
 loadkeys br-abnt2
 
 # Verifica conexão com a internet
@@ -66,7 +66,8 @@ cat > config.json << EOL
     "locale-gen",
     "echo 'LANG=pt_BR.UTF-8' > /etc/locale.conf",
     "echo 'KEYMAP=br-abnt2' > /etc/vconsole.conf",
-    "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB"
+    "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB",
+    "grub-mkconfig -o /boot/grub/grub.cfg"
   ],
   "disk-config": {
     "device": "$disk",
@@ -128,7 +129,6 @@ cat > config.json << EOL
     "make",
     "mariadb",
     "mesa",
-    "mongodb",
     "nano",
     "neovim",
     "network-manager-applet",
@@ -157,7 +157,7 @@ cat > config.json << EOL
     "thunar-archive-plugin",
     "tlp",
     "unzip",
-    "virtualenv",
+    "python-virtualenv",
     "vulkan-intel",
     "waybar",
     "wget",
@@ -186,8 +186,17 @@ cat > config.json << EOL
 }
 EOL
 
+# Verifica pacotes antes da instalação
+echo "Verificando disponibilidade dos pacotes..."
+pacman -Sp --needed --noconfirm $(cat config.json | grep '"packages"' -A 100 | grep -Po '"\K[^"]+' | tr '\n' ' ') > /dev/null
+if [ $? -ne 0 ]; then
+  echo "Erro: Alguns pacotes não foram encontrados. Verifique os logs em /tmp/pacman_check.log."
+  pacman -Sp --needed --noconfirm $(cat config.json | grep '"packages"' -A 100 | grep -Po '"\K[^"]+' | tr '\n' ' ') > /tmp/pacman_check.log 2>&1
+  exit 1
+fi
+
 # Executa o archinstall com a configuração
-archinstall --config config.json
+archinstall --config config.json --silent
 
 # Verifica se a instalação foi bem-sucedida
 if [ $? -eq 0 ]; then
@@ -196,5 +205,6 @@ if [ $? -eq 0 ]; then
   reboot
 else
   echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
+  cat /var/log/archinstall/errors.log
   exit 1
 fi
