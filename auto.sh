@@ -47,9 +47,9 @@ check_error() {
     fi
 }
 
-# Instalar dialog, git e dosfstools no ambiente live
-pacman -S --noconfirm dialog git dosfstools smartmontools
-check_error "Falha ao instalar dialog, git, dosfstools ou smartmontools no ambiente live"
+# Instalar ferramentas necessárias no ambiente live
+pacman -S --noconfirm dialog git dosfstools smartmontools lsof
+check_error "Falha ao instalar dialog, git, dosfstools, smartmontools ou lsof no ambiente live"
 
 # Aviso inicial sobre formatação
 echo "Bem-vindo à instalação do Arch Linux com Hyprland!"
@@ -87,6 +87,24 @@ smartctl -a "$disk" | tee -a /tmp/install.log
 if smartctl -a "$disk" | grep -q "SMART overall-health self-assessment test result: FAILED"; then
     echo "Erro: Disco $disk apresenta falhas no teste SMART. Considere substituir o disco."
     exit 1
+fi
+
+# Verificar se o disco está em modo somente leitura
+if blockdev --getro "$disk" | grep -q 1; then
+    echo "Erro: Disco $disk está em modo somente leitura. Verifique com 'dmesg | grep sda'."
+    dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
+    exit 1
+fi
+
+# Verificar processos usando o disco
+echo "Verificando processos que podem estar bloqueando $disk..."
+lsof "$disk" "$disk"1 2>> /tmp/install.log || true
+fuser -m "$disk" "$disk"1 2>> /tmp/install.log || true
+if lsof "$disk" "$disk"1 2>/dev/null | grep -q .; then
+    echo "Aviso: Processos estão usando $disk ou ${disk}1. Encerrando processos..."
+    fuser -k -m "$disk" "$disk"1 2>/dev/null || true
+    umount "${disk}1" 2>/dev/null || true
+    sleep 2
 fi
 
 # Solicitar usuário e senha
@@ -190,9 +208,9 @@ check_error "Falha ao atualizar repositórios"
 echo "[2/9] → Particionando $disk..."
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
-wipefs -a "$disk"
+wipefs -a "$disk" 2>> /tmp/install.log
 wipefs -a "${disk}1" 2>/dev/null || true
-sgdisk --zap-all "$disk"
+sgdisk --zap-all "$disk" 2>> /tmp/install.log
 partprobe "$disk"
 sync
 parted -s "$disk" mklabel gpt
@@ -208,7 +226,7 @@ check_error "Falha ao particionar o disco"
 # Verificar estado do disco
 echo "Verificando estado do disco $disk..."
 blockdev --rereadpt "$disk"
-dmesg | grep "$disk" | tail -n 10 >> /tmp/install.log
+dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
 if dmesg | grep -i "error.*$disk"; then
     echo "Erro: Problemas detectados no disco $disk. Verifique /tmp/install.log."
     exit 1
@@ -216,8 +234,12 @@ fi
 
 echo "[3/9] → Formatando partições..."
 umount "${disk}1" 2>/dev/null || true
-wipefs -a "${disk}1" 2>/dev/null || true
-mkfs.vfat -F 32 -I -n EFI "${disk}1"
+wipefs -a "${disk}1" 2>> /tmp/install.log || true
+fuser -k -m "${disk}1" 2>/dev/null || true
+if ! mkfs.vfat -F 32 -I -n EFI "${disk}1" 2>> /tmp/install.log; then
+    echo "Aviso: mkfs.vfat falhou. Tentando mkfs.fat como alternativa..."
+    mkfs.fat -F32 -n EFI "${disk}1" 2>> /tmp/install.log
+fi
 sync
 mkswap -L SWAP "${disk}2"
 swapon "${disk}2"
@@ -230,13 +252,19 @@ check_error "Falha ao formatar partições"
 if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
     echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32. Tentando novamente..."
     umount "${disk}1" 2>/dev/null || true
-    wipefs -a "${disk}1" 2>/dev/null || true
-    mkfs.vfat -F 32 -I -n EFI "${disk}1"
+    wipefs -a "${disk}1" 2>> /tmp/install.log || true
+    fuser -k -m "${disk}1" 2>/dev/null || true
+    if ! mkfs.vfat -F 32 -I -n EFI "${disk}1" 2>> /tmp/install.log; then
+        echo "Aviso: mkfs.vfat falhou novamente. Tentando mkfs.fat..."
+        mkfs.fat -F32 -n EFI "${disk}1" 2>> /tmp/install.log
+    fi
     sync
     if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
         echo "Erro: Falha persistente ao formatar ${disk}1 como FAT32."
         echo "Verifique erros com 'dmesg | grep sda' e saúde do disco com 'smartctl -a $disk'."
-        dmesg | grep "$disk" | tail -n 10 >> /tmp/install.log
+        dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
+        lsof "${disk}1" 2>> /tmp/install.log || true
+        fuser -m "${disk}1" 2>> /tmp/install.log || true
         exit 1
     fi
 fi
@@ -413,6 +441,7 @@ echo "1. Confirme que Secure Boot está DESATIVADO."
 echo "2. Confirme que Fast BIOS Mode está DESATIVADO."
 echo "3. Em Boot Device Options, selecione 'Arch Linux' ou o disco interno ($disk)."
 echo "4. Se 'Arch Linux' não aparecer, reinstale o GRUB manualmente (veja /tmp/install.log)."
+echo "5. Envie o /tmp/install.log com 'cat /tmp/install.log | nc termbin.com 9999' e acesse a URL no celular."
 echo "Reiniciando em 15 segundos... Pressione Ctrl+C para cancelar."
 sleep 15
 reboot
