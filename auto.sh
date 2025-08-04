@@ -1,121 +1,153 @@
 #!/bin/bash
 
-# Script simplificado para instalação do Arch Linux com archinstall
-# Executar como root no ambiente live do Arch Linux
-
-# Verifica se está rodando como root
-if [ "$(id -u)" -ne 0 ]; then
-    echo "Este script deve ser executado como root!"
-    exit 1
+# Verifica se está no ambiente live
+if [ ! -d /sys/firmware/efi ]; then
+  echo "Ambiente live não detectado ou não é EFI. Verifique a inicialização."
+  exit 1
 fi
 
-# Verifica se pacotes.txt existe
-if [ ! -f pacotes.txt ]; then
-    echo "Erro: Arquivo pacotes.txt não encontrado!"
-    exit 1
-fi
+# Configura teclado
+loadkeys br-abnt2
 
-# Função para configurar rede (Wi-Fi ou cabo)
-configure_network() {
-    echo "Verificando conexão com a Internet..."
-    if ping -c 1 8.8.8.8 &>/dev/null; then
-        echo "Conexão OK!"
-        return
-    fi
-    read -p "Usar Wi-Fi? (s/n): " use_wifi
-    if [[ "$use_wifi" =~ ^[Ss]$ ]]; then
-        echo "Dispositivos Wi-Fi:"
-        iwctl device list
-        read -p "Nome do dispositivo Wi-Fi (ex: wlan0): " wifi_device
-        read -p "SSID da rede Wi-Fi: " wifi_ssid
-        read -s -p "Senha do Wi-Fi: " wifi_pass
-        echo
-        iwctl --passphrase "$wifi_pass" station "$wifi_device" connect "$wifi_ssid"
-        sleep 5
-        if ping -c 1 8.8.8.8 &>/dev/null; then
-            echo "Wi-Fi conectado!"
-        else
-            echo "Falha ao conectar Wi-Fi. Verifique os dados."
-            exit 1
-        fi
-    else
-        echo "Configurando rede cabeada..."
-        systemctl start dhcpcd
-        sleep 5
-        if ping -c 1 8.8.8.8 &>/dev/null; then
-            echo "Rede cabeada OK!"
-        else
-            echo "Falha na rede cabeada. Verifique o cabo."
-            exit 1
-        fi
-    fi
-}
-
-# Função para coletar dados do usuário
-collect_user_info() {
-    read -p "Hostname do sistema: " hostname
-    read -p "Nome do usuário: " username
-    read -s -p "Senha do usuário: " user_password
-    echo
-    read -s -p "Senha do root: " root_password
-    echo
-}
-
-# Função para gerar arquivo JSON para archinstall
-generate_archinstall_config() {
-    packages=$(cat pacotes.txt | sed 's/^/"/;s/$/"/' | tr '\n' ',' | sed 's/,$//')
-    cat <<EOF > /tmp/archinstall-config.json
-{
-    "audio": "pipewire",
-    "bootloader": "grub-install",
-    "hostname": "$hostname",
-    "kernels": ["linux-zen"],
-    "locale_config": {
-        "kb_layout": "br",
-        "sys_enc": "UTF-8",
-        "sys_lang": "pt_BR"
-    },
-    "mirror_config": {
-        "mirror_regions": {
-            "Brazil": []
-        }
-    },
-    "network_config": {
-        "type": "nm"
-    },
-    "ntp": true,
-    "packages": ["base", "base-devel", "linux-firmware", "intel-ucode", $packages],
-    "profile": {
-        "profile": "hyprland"
-    },
-    "timezone": "America/Sao_Paulo",
-    "users": {
-        "$username": {
-            "password": "$user_password",
-            "sudo": true
-        }
-    },
-    "root_password": "$root_password"
-}
+# Verifica conexão com a internet
+if ping -c 4 archlinux.org &> /dev/null; then
+  echo "Conexão com a internet confirmada."
+else
+  echo "Sem conexão com a internet. Configurando Wi-Fi..."
+  iwctl << EOF
+  device list
+  station wlan0 scan
+  station wlan0 get-networks
+  station wlan0 connect "SUA_REDE_WIFI"
+  exit
 EOF
-}
+  read -p "Digite a senha do Wi-Fi: " wifi_password
+  iwctl --passphrase "$wifi_password" station wlan0 connect "SUA_REDE_WIFI"
+  if ! ping -c 4 archlinux.org &> /dev/null; then
+    echo "Falha na conexão com a internet. Verifique e tente novamente."
+    exit 1
+  fi
+fi
 
-# Função principal
-main() {
-    echo "Iniciando instalação do Arch Linux com archinstall..."
-    configure_network
-    collect_user_info
-    generate_archinstall_config
-    echo "Abrindo archinstall. Configure o particionamento quando solicitado."
-    archinstall --config /tmp/archinstall-config.json 2> /tmp/install-error.log
-    if [ $? -eq 0 ]; then
-        echo "Instalação concluída! Reiniciando em 5 segundos..."
-        sleep 5
-        reboot
-    else
-        echo "Erro na instalação. Veja /tmp/install-error.log."
-        exit 1
-    fi
-}
+# Otimiza mirrors
+pacman -Syy
+reflector --country Brazil --latest 5 --sort rate --save /etc/pacman.d/mirrorlist
 
-main
+# Cria arquivo de configuração para o archinstall
+cat > config.json << EOL
+{
+  "audio": "pipewire",
+  "bootloader": "grub",
+  "custom-commands": [
+    "systemctl enable bluetooth",
+    "systemctl enable NetworkManager",
+    "systemctl enable tlp",
+    "systemctl enable sshd",
+    "gpasswd -a \$USER wheel"
+  ],
+  "disk-config": {
+    "layout": "auto",
+    "filesystem": "ext4"
+  },
+  "hostname": "arch-notebook",
+  "kernels": ["linux-zen"],
+  "locale": {
+    "kb_layout": "br",
+    "language": "pt_BR",
+    "timezone": "America/Sao_Paulo"
+  },
+  "mirror-regions": ["Brazil"],
+  "network": "nm",
+  "ntp": true,
+  "packages": [
+    "bash-completion",
+    "bluez",
+    "bluez-utils",
+    "blueman",
+    "btop",
+    "clang",
+    "code",
+    "curl",
+    "dbeaver",
+    "docker",
+    "docker-compose",
+    "dunst",
+    "efibootmgr",
+    "feh",
+    "fwupd",
+    "gcc",
+    "git",
+    "go",
+    "htop",
+    "hyprland",
+    "intel-media-driver",
+    "intel-ucode",
+    "jupyterlab",
+    "kdeconnect",
+    "kitty",
+    "libinput",
+    "lm_sensors",
+    "make",
+    "mariadb",
+    "mesa",
+    "mongodb",
+    "nano",
+    "neovim",
+    "network-manager-applet",
+    "networkmanager",
+    "nginx",
+    "nodejs",
+    "npm",
+    "noto-fonts",
+    "openssh",
+    "pavucontrol",
+    "pipewire",
+    "pipewire-alsa",
+    "pipewire-audio",
+    "pipewire-pulse",
+    "poetry",
+    "postman",
+    "postgresql",
+    "python",
+    "python-pip",
+    "redis",
+    "ripgrep",
+    "rofi",
+    "rust",
+    "sof-firmware",
+    "starship",
+    "thunar",
+    "thunar-archive-plugin",
+    "tlp",
+    "unzip",
+    "virtualenv",
+    "vulkan-intel",
+    "waybar",
+    "wget",
+    "wireplumber",
+    "xdg-desktop-portal",
+    "xdg-desktop-portal-hyprland",
+    "zip"
+  ],
+  "profile": "minimal",
+  "root-password": "sua_senha_root",
+  "user": {
+    "name": "seu_usuario",
+    "password": "sua_senha_usuario",
+    "sudo": true
+  }
+}
+EOL
+
+# Executa o archinstall com a configuração
+archinstall --config config.json
+
+# Verifica se a instalação foi bem-sucedida
+if [ $? -eq 0 ]; then
+  echo "Instalação concluída com sucesso! Reiniciando em 10 segundos..."
+  sleep 10
+  reboot
+else
+  echo "Erro durante a instalação. Verifique os logs em /var/log/archinstall."
+  exit 1
+fi
