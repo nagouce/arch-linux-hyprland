@@ -186,15 +186,6 @@ cat > config.json << EOL
 }
 EOL
 
-# Verifica pacotes antes da instalação
-echo "Verificando disponibilidade dos pacotes..."
-pacman -Sp --needed --noconfirm $(cat config.json | grep '"packages"' -A 100 | grep -Po '"\K[^"]+' | tr '\n' ' ') > /tmp/pacman_check.log 2>&1
-if [ $? -ne 0 ]; then
-  echo "Erro: Alguns pacotes não foram encontrados. Verifique /tmp/pacman_check.log."
-  cat /tmp/pacman_check.log
-  exit 1
-fi
-
 # Executa o archinstall com a configuração
 archinstall --config config.json --silent
 
