@@ -14,31 +14,6 @@ check_internet() {
     exit 1
 }
 
-# Função para detectar modo de boot (UEFI ou BIOS)
-detect_boot_mode() {
-    if [ -d /sys/firmware/efi ]; then
-        BOOT_MODE="UEFI"
-    else
-        BOOT_MODE="BIOS"
-    fi
-}
-
-# Função para verificar tipo de conexão de rede
-check_network_type() {
-    if ip link | grep -q "wlan"; then
-        NETWORK_TYPE="Wi-Fi"
-        echo "Conexão Wi-Fi detectada. Certifique-se de que está conectado via 'nmtui'."
-    elif ip link | grep -q "eth"; then
-        NETWORK_TYPE="Ethernet"
-        echo "Conexão Ethernet detectada. Ativando DHCP..."
-        dhcpcd 2>/dev/null || true
-    else
-        NETWORK_TYPE="Unknown"
-        echo "Nenhuma conexão de rede detectada. Configure com 'nmtui' ou 'dhcpcd'."
-        exit 1
-    fi
-}
-
 # Função para verificar erros
 check_error() {
     if [ $? -ne 0 ]; then
@@ -49,85 +24,51 @@ check_error() {
 }
 
 # Instalar ferramentas necessárias no ambiente live
-pacman -S --noconfirm dialog git dosfstools smartmontools lsof
-check_error "Falha ao instalar dialog, git, dosfstools, smartmontools ou lsof no ambiente live"
+pacman -S --noconfirm lsof dosfstools smartmontools
+check_error "Falha ao instalar lsof, dosfstools ou smartmontools no ambiente live"
 
-# Aviso inicial sobre formatação
-echo "Bem-vindo à instalação do Arch Linux com Hyprland!"
-read -p "Deseja formatar completamente o disco e prosseguir? (s/n): " initial_confirm
+# Aviso inicial
+echo "Bem-vindo à instalação automatizada do Arch Linux com Hyprland!"
+read -p "Deseja formatar completamente o disco /dev/sda e prosseguir? (s/n): " initial_confirm
 if [ "$initial_confirm" != "s" ]; then
     echo "Instalação cancelada."
     exit 1
 fi
 
-# Solicitar disco
-echo "Lista de discos disponíveis:"
-lsblk
-read -p "Digite o disco para particionamento (ex.: /dev/sda): " disk
-if [ ! -b "$disk" ]; then
-    echo "Erro: Disco inválido."
-    exit 1
-fi
-if lsblk -dno RM "$disk" | grep -q 1; then
-    echo "Erro: Disco selecionado é removível. Escolha um disco interno."
-    exit 1
-fi
-if [ $(lsblk -dno SIZE "$disk" | grep -o '[0-9.]\+') -lt 20 ]; then
-    echo "Erro: Disco muito pequeno (<20GB)."
-    exit 1
-fi
-read -p "AVISO: Todos os dados em $disk serão apagados. Continuar? (s/n): " confirm
-if [ "$confirm" != "s" ]; then
-    echo "Instalação cancelada."
-    exit 1
-fi
-
 # Verificar saúde do disco
-echo "Verificando saúde do disco $disk..."
-smartctl -a "$disk" | tee -a /tmp/install.log
-if smartctl -a "$disk" | grep -q "SMART overall-health self-assessment test result: FAILED"; then
-    echo "Erro: Disco $disk apresenta falhas no teste SMART. Considere substituir o disco."
+echo "Verificando saúde do disco /dev/sda..."
+smartctl -a /dev/sda | tee -a /tmp/install.log
+if smartctl -a /dev/sda | grep -q "SMART overall-health self-assessment test result: FAILED"; then
+    echo "Erro: Disco /dev/sda apresenta falhas no teste SMART. Considere substituir o disco."
     exit 1
 fi
 
 # Verificar se o disco está em modo somente leitura
-if blockdev --getro "$disk" | grep -q 1; then
-    echo "Erro: Disco $disk está em modo somente leitura. Verifique com 'dmesg | grep sda'."
-    dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
+if blockdev --getro /dev/sda | grep -q 1; then
+    echo "Erro: Disco /dev/sda está em modo somente leitura. Verifique com 'dmesg | grep sda'."
+    dmesg | grep sda | tail -n 20 >> /tmp/install.log
     exit 1
 fi
 
-# Verificar processos usando o disco
-echo "Verificando processos que podem estar bloqueando $disk..."
-lsof "$disk" "$disk"1 2>> /tmp/install.log || true
-fuser -m "$disk" "$disk"1 2>> /tmp/install.log || true
-if lsof "$disk" "$disk"1 2>/dev/null | grep -q .; then
-    echo "Aviso: Processos estão usando $disk ou ${disk}1. Encerrando processos..."
-    fuser -k -m "$disk" "$disk"1 2>/dev/null || true
-    umount "${disk}1" 2>/dev/null || true
-    sleep 2
-fi
-
-# Forçar liberação do disco
-echo "Forçando liberação do disco $disk..."
+# Liberar disco e partições
+echo "Liberando disco /dev/sda..."
 umount -R /mnt 2>/dev/null || true
 swapoff -a 2>/dev/null || true
+umount /dev/sda1 2>/dev/null || true
+lsof /dev/sda /dev/sda1 2>> /tmp/install.log || true
+fuser -m /dev/sda /dev/sda1 2>> /tmp/install.log || true
+fuser -k -m /dev/sda /dev/sda1 2>/dev/null || true
+dd if=/dev/zero of=/dev/sda bs=1M count=10 status=progress 2>> /tmp/install.log
+wipefs -a /dev/sda 2>> /tmp/install.log
+sgdisk --zap-all /dev/sda 2>> /tmp/install.log
 echo 1 > /proc/sys/kernel/sysrq
 echo u > /proc/sysrq-trigger
 sync
 sleep 2
-dd if=/dev/zero of="$disk" bs=1M count=10 status=progress 2>> /tmp/install.log
-sync
-wipefs -a "$disk" 2>> /tmp/install.log
-sgdisk --zap-all "$disk" 2>> /tmp/install.log
-partprobe "$disk"
-sync
-echo 1 > /proc/sys/kernel/sysrq
-echo u > /proc/sysrq-trigger
-sync
-sleep 2
+partprobe /dev/sda
+blockdev --rereadpt /dev/sda
 
-# Solicitar usuário e senha
+# Solicitar usuário, senha e hostname
 read -p "Digite o nome do usuário: " user
 read -s -p "Digite a senha do usuário: " pass
 echo
@@ -137,80 +78,114 @@ if [ "$pass" != "$pass_confirm" ]; then
     echo "Erro: As senhas não coincidem."
     exit 1
 fi
-
-# Solicitar hostname
 read -p "Digite o hostname do sistema: " hostname
 
-# Selecionar fuso horário com dialog
-region=$(dialog --stdout --menu "Selecione a região do fuso horário:" 20 60 10 \
-    "America" "Américas" \
-    "Europe" "Europa" \
-    "Asia" "Ásia" \
-    "Africa" "África" \
-    "Australia" "Austrália" \
-    "Pacific" "Pacífico" \
-    "Other" "Outro")
-if [ -z "$region" ]; then
-    echo "Erro: Região não selecionada."
-    exit 1
-fi
+# Criar arquivo de configuração para archinstall
+cat <<EOF > /tmp/archinstall-config.json
+{
+    "audio": "pipewire",
+    "bootloader": "grub",
+    "custom-commands": [
+        "pacman -S --noconfirm hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww sddm polkit-gnome wireplumber pavucontrol brightnessctl bluez bluez-utils blueman network-manager-applet thunar thunar-archive-plugin ttf-jetbrains-mono-nerd noto-fonts bash-completion btop clang curl dbeaver docker docker-compose dunst feh fwupd gcc go htop jupyterlab kdeconnect libinput lm_sensors make mariadb mesa neovim nginx nodejs npm openssh poetry postgresql python python-pip redis ripgrep rust sof-firmware starship tlp unzip zip",
+        "systemctl enable NetworkManager bluetooth tlp docker sddm fstrim.timer",
+        "git clone https://aur.archlinux.org/yay.git /tmp/yay && cd /tmp/yay && makepkg -s --noconfirm && pacman -U --noconfirm yay-*.pkg.tar.zst",
+        "su - $user -c 'yay -S --noconfirm --needed code postman swaylock-effects mongodb-bin python-virtualenv'",
+        "su - $user -c 'git clone https://github.com/nagouce/arch-linux-hyprland.git ~/setup && mkdir -p ~/.config && cp -r ~/setup/configs/* ~/.config/ || true'"
+    ],
+    "disk_config": {
+        "config_type": "manual_partitioning",
+        "device_modifications": [
+            {
+                "device": "/dev/sda",
+                "wipe": true,
+                "partitions": [
+                    {
+                        "type": "primary",
+                        "start": "1MiB",
+                        "size": "512MiB",
+                        "mountpoint": "/boot/efi",
+                        "filesystem": "fat32",
+                        "flags": ["Boot", "ESP"]
+                    },
+                    {
+                        "type": "primary",
+                        "start": "513MiB",
+                        "size": "8192MiB",
+                        "mountpoint": null,
+                        "filesystem": "linux-swap"
+                    },
+                    {
+                        "type": "primary",
+                        "start": "8705MiB",
+                        "size": "50000MiB",
+                        "mountpoint": "/",
+                        "filesystem": "ext4"
+                    },
+                    {
+                        "type": "primary",
+                        "start": "58705MiB",
+                        "size": "-1",
+                        "mountpoint": "/home",
+                        "filesystem": "ext4"
+                    }
+                ]
+            }
+        ]
+    },
+    "hostname": "$hostname",
+    "kernels": ["linux-zen"],
+    "locale_config": {
+        "kb_layout": "br",
+        "sys_enc": "UTF-8",
+        "sys_lang": "pt_BR.UTF-8",
+        "timezone": "America/Sao_Paulo"
+    },
+    "mirror_config": {
+        "mirror_regions": {
+            "Brazil": []
+        }
+    },
+    "network_config": {
+        "type": "nm"
+    },
+    "profile_config": {
+        "profile": "minimal"
+    },
+    "users": [
+        {
+            "username": "$user",
+            "password": "$pass",
+            "sudo": true
+        }
+    ],
+    "root-password": "$pass",
+    "sys-encoding": "utf-8",
+    "sys-language": "pt_BR"
+}
+EOF
 
-if [ "$region" = "Other" ]; then
-    read -p "Digite o fuso horário completo (ex.: America/Sao_Paulo): " timezone
-else
-    subregions=$(find /usr/share/zoneinfo/$region -type f | sed "s|/usr/share/zoneinfo/$region/||" | sort)
-    timezone=$(dialog --stdout --menu "Selecione o fuso horário em $region:" 20 60 10 \
-        "Sao_Paulo" "Brasil - São Paulo" \
-        $(echo "$subregions" | awk '{print $1, $1}'))
-    timezone="$region/$timezone"
-fi
-if [ ! -f "/usr/share/zoneinfo/$timezone" ]; then
-    echo "Erro: Fuso horário inválido."
-    exit 1
-fi
-
-# Selecionar língua com dialog
-language=$(dialog --stdout --menu "Selecione a língua:" 20 60 10 \
-    "pt_BR.UTF-8" "Português (Brasil)" \
-    "en_US.UTF-8" "Inglês (EUA)" \
-    $(grep -v '^#' /etc/locale.gen | grep UTF-8 | awk '{print $1, $1}'))
-if [ -z "$language" ]; then
-    echo "Erro: Língua não selecionada."
-    exit 1
-fi
-
-# Selecionar layout do teclado
-keymap=$(dialog --stdout --menu "Selecione o layout do teclado:" 20 60 10 \
-    "br" "Português (Brasil)" \
-    "us" "Inglês (EUA)" \
-    $(localectl list-keymaps | sort | awk '{print $1, $1}'))
-if [ -z "$keymap" ]; then
-    echo "Erro: Layout do teclado não selecionado."
-    exit 1
-fi
-
-# Detectar modo de boot
-detect_boot_mode
-echo "Modo de boot detectado: $BOOT_MODE"
-
-# Verificar se é UEFI (obrigatório para seu notebook Samsung)
-if [ "$BOOT_MODE" != "UEFI" ]; then
+# Verificar modo UEFI
+if [ ! -d /sys/firmware/efi ]; then
     echo "Erro: Este script requer modo UEFI. Seu sistema está em modo BIOS legado."
     exit 1
 fi
 
-# Verificar tipo de conexão de rede
+# Verificar conexão de rede
+check_internet
+check_network_type() {
+    if ip link | grep -q "wlan"; then
+        echo "Conexão Wi-Fi detectada. Certifique-se de que está conectado via 'nmtui'."
+    elif ip link | grep -q "eth"; then
+        echo "Conexão Ethernet detectada. Ativando DHCP..."
+        dhcpcd 2>/dev/null || true
+    else
+        echo "Nenhuma conexão de rede detectada. Configure com 'nmtui' ou 'dhcpcd'."
+        exit 1
+    fi
+}
 check_network_type
 
-# Iniciar log
-exec 1> >(tee -a /tmp/install.log)
-exec 2>&1
-echo "Iniciando instalação em $(date)"
-
-echo "[1/9] → Verificando pré-requisitos..."
-check_internet
-
-# Atualizar lista de espelhos com base no melhor ping (apenas Brasil)
+# Atualizar espelhos
 echo "Atualizando lista de espelhos com os melhores pings do Brasil..."
 pacman -Syy reflector
 for i in {1..3}; do
@@ -225,256 +200,45 @@ fi
 pacman -Syy
 check_error "Falha ao atualizar repositórios"
 
-echo "[2/9] → Particionando $disk..."
-umount -R /mnt 2>/dev/null || true
-swapoff -a 2>/dev/null || true
-wipefs -a "$disk" 2>> /tmp/install.log
-sgdisk --zap-all "$disk" 2>> /tmp/install.log
-dd if=/dev/zero of="$disk" bs=1M count=10 status=progress 2>> /tmp/install.log
-sync
-partprobe "$disk"
-echo 1 > /proc/sys/kernel/sysrq
-echo u > /proc/sysrq-trigger
-sync
-sleep 2
-parted -s "$disk" mklabel gpt
-parted -s "$disk" mkpart EFI fat32 1MiB 513MiB
-parted -s "$disk" set 1 esp on
-parted -s "$disk" mkpart linux-swap 513MiB 8705MiB
-parted -s "$disk" mkpart primary ext4 8705MiB 58705MiB
-parted -s "$disk" mkpart primary ext4 58705MiB 100%
-partprobe "$disk"
-sync
-for i in {1..3}; do
-    blockdev --rereadpt "$disk" && break
-    echo "Tentativa $i: Falha ao atualizar tabela de partições. Forçando liberação..."
-    echo 1 > /proc/sys/kernel/sysrq
-    echo u > /proc/sysrq-trigger
-    sync
-    sleep 2
-done
-check_error "Falha ao particionar o disco"
+# Executar archinstall com configuração
+echo "Iniciando instalação com archinstall..."
+archinstall --config /tmp/archinstall-config.json --silent --skip-ntp
+check_error "Falha ao executar archinstall"
 
-# Verificar estado do disco
-echo "Verificando estado do disco $disk..."
-dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
-if dmesg | grep -i "error.*$disk"; then
-    echo "Erro: Problemas detectados no disco $disk. Verifique /tmp/install.log."
-    exit 1
-fi
-
-echo "[3/9] → Formatando partições..."
-umount "${disk}1" 2>/dev/null || true
-wipefs -a "${disk}1" 2>> /tmp/install.log || true
-fuser -k -m "${disk}1" 2>/dev/null || true
-sync
-sleep 2
-for i in {1..3}; do
-    if mkfs.vfat -F 32 -n EFI "${disk}1" 2>> /tmp/install.log; then
-        break
-    fi
-    echo "Tentativa $i: mkfs.vfat falhou. Tentando mkfs.fat..."
-    wipefs -a "${disk}1" 2>> /tmp/install.log || true
-    if mkfs.fat -F32 -n EFI "${disk}1" 2>> /tmp/install.log; then
-        break
-    fi
-    sleep 2
-done
-if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
-    echo "Erro: Falha persistente ao formatar ${disk}1 como FAT32."
-    echo "Verifique erros com 'dmesg | grep sda' e saúde do disco com 'smartctl -a $disk'."
-    dmesg | grep "$disk" | tail -n 20 >> /tmp/install.log
-    lsof "${disk}1" 2>> /tmp/install.log || true
-    fuser -m "${disk}1" 2>> /tmp/install.log || true
-    exit 1
-fi
-sync
-mkswap -L SWAP "${disk}2" 2>> /tmp/install.log
-swapon "${disk}2" 2>> /tmp/install.log
-mkfs.ext4 -L ROOT "${disk}3" 2>> /tmp/install.log
-mkfs.ext4 -L HOME "${disk}4" 2>> /tmp/install.log
-sync
-check_error "Falha ao formatar partições"
-
-# Verificar formatação da partição EFI
-if ! lsblk -f | grep "${disk}1" | grep -q vfat; then
-    echo "Erro: Partição EFI (${disk}1) não está formatada como FAT32 após tentativas."
-    exit 1
-fi
-
-echo "[4/9] → Montando partições..."
-mount "${disk}3" /mnt
-mkdir -p /mnt/boot/efi
-mount "${disk}1" /mnt/boot/efi
-mkdir -p /mnt/home
-mount "${disk}4" /mnt/home
-check_error "Falha ao montar partições"
-
-# Verificar partição EFI
-if ! mount | grep -q "${disk}1 on /mnt/boot/efi type vfat"; then
-    echo "Erro: Partição EFI não montada corretamente em /mnt/boot/efi."
-    exit 1
-fi
-
-echo "[5/9] → Instalando base..."
-pacstrap /mnt base base-devel linux-zen linux-firmware networkmanager sudo git nano \
-    grub efibootmgr os-prober hyprland xdg-desktop-portal-hyprland kitty waybar rofi swww \
-    sddm polkit-gnome pipewire-audio wireplumber pavucontrol brightnessctl bluez bluez-utils \
-    blueman network-manager-applet thunar thunar-archive-plugin ttf-jetbrains-mono-nerd \
-    noto-fonts bash-completion btop clang curl dbeaver docker docker-compose dunst feh \
-    fwupd gcc go htop jupyterlab kdeconnect libinput lm_sensors make mariadb mesa \
-    neovim nginx nodejs npm openssh poetry postgresql python python-pip redis ripgrep \
-    rust sof-firmware starship tlp unzip zip
-check_error "Falha ao instalar pacotes base"
-
-echo "[6/9] → Gerando /etc/fstab..."
-genfstab -U /mnt >> /mnt/etc/fstab
-check_error "Falha ao gerar fstab"
-
-# Verificar /etc/fstab
-if ! grep -q "${disk}1" /mnt/etc/fstab; then
-    echo "Erro: Partição EFI (${disk}1) não encontrada no /etc/fstab."
-    exit 1
-fi
-
-echo "[7/9] → Configurando sistema..."
+# Configurações adicionais de hardware no chroot
+echo "Configurando hardware adicional..."
 arch-chroot /mnt /bin/bash <<EOF
 set -e
-
-# Configurar fuso horário
-ln -sf /usr/share/zoneinfo/$timezone /etc/localtime
-hwclock --systohc
-
-# Configurar locale
-sed -i "s/^#$language/$language/" /etc/locale.gen
-locale-gen
-echo "LANG=$language" > /etc/locale.conf
-
-# Configurar hostname
-echo "$hostname" > /etc/hostname
-cat <<HOSTS > /etc/hosts
-127.0.0.1 localhost
-::1 localhost
-127.0.1.1 $hostname.localdomain $hostname
-HOSTS
-
-# Configurar root e usuário
-echo "root:$pass" | chpasswd
-useradd -m -G wheel,docker,video,audio,input "$user"
-echo "$user:$pass" | chpasswd
-echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/wheel_install
-chmod 440 /etc/sudoers.d/wheel_install
-
-# Configurar layout do teclado
-echo "KEYMAP=$keymap" > /etc/vconsole.conf
-mkdir -p /home/$user/.config/hypr
-echo "input { kb_layout = $keymap }" > /home/$user/.config/hypr/hyprland.conf
-chown -R $user:$user /home/$user/.config
-
-# Limpar entradas UEFI antigas
-pacman -S efibootmgr os-prober --noconfirm
-for entry in \$(efibootmgr | grep -i "Arch Linux" | awk '{print \$1}' | cut -c5-8); do
-    efibootmgr --delete-bootnum --bootnum \$entry
-done
-
-# Instalar e configurar GRUB
-if [ "$BOOT_MODE" = "UEFI" ]; then
-    if ! mount | grep -q "/boot/efi type vfat"; then
-        echo "Erro: Partição EFI não montada em /boot/efi no chroot."
-        exit 1
-    fi
-    for i in {1..3}; do
-        grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=arch --recheck && break
-        echo "Tentativa $i: Falha ao instalar GRUB. Tentando novamente..."
-        sleep 2
-    done
-    for i in {1..3}; do
-        efibootmgr --create --disk $disk --part 1 --loader /EFI/arch/grubx64.efi --label "Arch Linux" --verbose && break
-        echo "Tentativa $i: Falha ao registrar entrada UEFI. Tentando novamente..."
-        sleep 2
-    done
-    if ! efibootmgr | grep -q "Arch Linux"; then
-        echo "Erro: Entrada do GRUB não registrada no firmware UEFI."
-        exit 1
-    fi
-    if ! ls /boot/efi/EFI/arch/grubx64.efi; then
-        echo "Erro: Arquivo grubx64.efi não encontrado em /boot/efi/EFI/arch."
-        exit 1
-    fi
-else
-    grub-install --target=i386-pc $disk --recheck
-fi
-grub-mkconfig -o /boot/grub/grub.cfg
-if ! ls /boot/grub/grub.cfg; then
-    echo "Erro: Arquivo /boot/grub/grub.cfg não foi gerado."
-    exit 1
-fi
-
-# Habilitar serviços
-systemctl enable systemd-timesyncd
-systemctl enable NetworkManager
-systemctl enable bluetooth
-systemctl enable tlp
-systemctl enable docker
-systemctl enable sddm
-systemctl enable fstrim.timer
-
-# Instalar yay para pacotes do AUR
-pacman -S base-devel git --noconfirm
-su - "$user" -c "
-  git clone https://aur.archlinux.org/yay.git /tmp/yay &&
-  cd /tmp/yay &&
-  makepkg -s --noconfirm
-"
-pacman -U /tmp/yay/yay-*.pkg.tar.zst --noconfirm
-
-# Instalar pacotes do AUR
-su - "$user" -c "yay -S code postman swaylock-effects mongodb-bin python-virtualenv --noconfirm --needed"
-
-# Copiar configurações do repositório
-su - "$user" -c "
-  git clone https://github.com/nagouce/arch-linux-hyprland.git ~/setup &&
-  mkdir -p ~/.config &&
-  cp -r ~/setup/configs/* ~/.config/ || true
-"
-
-# Remover privilégios de sudo sem senha
-rm /etc/sudoers.d/wheel_install
-echo "%wheel ALL=(ALL:ALL) ALL" > /etc/sudoers.d/wheel
-chmod 440 /etc/sudoers.d/wheel
-EOF
-check_error "Falha ao configurar o sistema"
-
-echo "[8/9] → Verificando configurações de hardware..."
 if lscpu | grep -i intel; then
     echo "CPU Intel detectada. Instalando intel-ucode..."
-    pacstrap /mnt intel-ucode
+    pacman -S --noconfirm intel-ucode
 elif lscpu | grep -i amd; then
     echo "CPU AMD detectada. Instalando amd-ucode..."
-    pacstrap /mnt amd-ucode
+    pacman -S --noconfirm amd-ucode
 fi
 if lspci | grep -i nvidia; then
     echo "GPU NVIDIA detectada. Instalando drivers..."
-    pacstrap /mnt nvidia-dkms nvidia-utils libva-nvidia-driver
-    echo 'env = WLR_NO_HARDWARE_CURSORS,1' >> /mnt/home/$user/.config/hypr/hyprland.conf
-    echo 'env = WLR_DRM_DEVICES,/dev/dri/card0' >> /mnt/home/$user/.config/hypr/hyprland.conf
+    pacman -S --noconfirm nvidia-dkms nvidia-utils libva-nvidia-driver
+    echo 'env = WLR_NO_HARDWARE_CURSORS,1' >> /home/$user/.config/hypr/hyprland.conf
+    echo 'env = WLR_DRM_DEVICES,/dev/dri/card0' >> /home/$user/.config/hypr/hyprland.conf
 elif lspci | grep -i intel; then
     echo "GPU Intel detectada. Instalando drivers..."
-    pacstrap /mnt intel-media-driver vulkan-intel
+    pacman -S --noconfirm intel-media-driver vulkan-intel
 elif lspci | grep -i amd; then
     echo "GPU AMD detectada. Instalando drivers..."
-    pacstrap /mnt xf86-video-amdgpu vulkan-radeon
+    pacman -S --noconfirm xf86-video-amdgpu vulkan-radeon
 fi
-check_error "Falha ao instalar drivers gráficos"
+EOF
+check_error "Falha ao configurar hardware"
 
-echo "[9/9] → Instalação concluída."
+echo "Instalação concluída."
 echo "IMPORTANTE: Remova TODOS os pendrives e dispositivos externos antes de reiniciar."
 echo "Entre na BIOS/UEFI (tecla F2) e configure:"
 echo "1. Confirme que Secure Boot está DESATIVADO."
 echo "2. Confirme que Fast BIOS Mode está DESATIVADO."
-echo "3. Em Boot Device Options, selecione 'Arch Linux' ou o disco interno ($disk)."
+echo "3. Em Boot Device Options, selecione 'Arch Linux' ou o disco interno (/dev/sda)."
 echo "4. Se 'Arch Linux' não aparecer, reinstale o GRUB manualmente (veja /tmp/install.log)."
-echo "5. Envie o /tmp/install.log com 'cat /tmp/install.log | nc termbin.com 9999' e acesse a URL no celular."
+echo "5. Envie o /tmp/install.log com 'cat /tmp/install.log | nc termbin.com 9999'."
 echo "Reiniciando em 15 segundos... Pressione Ctrl+C para cancelar."
 sleep 15
 reboot
