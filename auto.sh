@@ -31,7 +31,24 @@ fi
 
 # Otimiza mirrors
 pacman -Syy
-reflector --country Brazil --latest 5 --sort rate --save /etc/pacman.d/mirrorlist
+reflector --country Brazil --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
+pacman -Syy
+
+# Verifica o disco
+echo "Discos disponíveis:"
+lsblk
+read -p "Digite o dispositivo do disco para instalação (ex.: /dev/sda): " disk
+if [ ! -b "$disk" ]; then
+  echo "Disco $disk não encontrado. Verifique com 'lsblk' e tente novamente."
+  exit 1
+fi
+
+# Limpa partições existentes (opcional, com confirmação)
+read -p "Deseja limpar todas as partições do disco $disk? (s/n): " wipe_disk
+if [ "$wipe_disk" = "s" ]; then
+  echo "Limpando partições do disco $disk..."
+  wipefs -a "$disk"
+fi
 
 # Cria arquivo de configuração para o archinstall
 cat > config.json << EOL
@@ -43,31 +60,32 @@ cat > config.json << EOL
     "systemctl enable NetworkManager",
     "systemctl enable tlp",
     "systemctl enable sshd",
+    "systemctl enable sddm",
     "gpasswd -a \$USER wheel",
     "echo 'pt_BR.UTF-8 UTF-8' > /etc/locale.gen",
     "locale-gen",
     "echo 'LANG=pt_BR.UTF-8' > /etc/locale.conf",
-    "echo 'KEYMAP=br-abnt2' > /etc/vconsole.conf"
+    "echo 'KEYMAP=br-abnt2' > /etc/vconsole.conf",
+    "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB"
   ],
   "disk-config": {
-    "layout": {
-      "partitions": [
-        {
-          "mountpoint": "/",
-          "filesystem": "btrfs",
-          "size": "50%"
-        },
-        {
-          "mountpoint": "/home",
-          "filesystem": "btrfs",
-          "size": "45%"
-        },
-        {
-          "type": "swap",
-          "size": "4GB"
-        }
-      ]
-    }
+    "device": "$disk",
+    "partitions": [
+      {
+        "mountpoint": "/",
+        "filesystem": "btrfs",
+        "size": "50%"
+      },
+      {
+        "mountpoint": "/home",
+        "filesystem": "btrfs",
+        "size": "45%"
+      },
+      {
+        "type": "swap",
+        "size": "8GB"
+      }
+    ]
   },
   "hostname": "arch-notebook",
   "kernels": ["linux-zen"],
@@ -126,7 +144,6 @@ cat > config.json << EOL
     "pipewire-audio",
     "pipewire-pulse",
     "poetry",
-    "postman",
     "postgresql",
     "python",
     "python-pip",
@@ -147,7 +164,17 @@ cat > config.json << EOL
     "wireplumber",
     "xdg-desktop-portal",
     "xdg-desktop-portal-hyprland",
-    "zip"
+    "zip",
+    "sddm",
+    "perl-io-socket-ssl",
+    "perl-authen-sasl",
+    "perl-mediawiki-api",
+    "perl-datetime-format-iso8601",
+    "perl-lwp-protocol-https",
+    "perl-cgi",
+    "subversion",
+    "libsecret",
+    "less"
   ],
   "profile": "minimal",
   "root-password": "sua_senha_root",
@@ -160,7 +187,7 @@ cat > config.json << EOL
 EOL
 
 # Executa o archinstall com a configuração
-archinstall --config config.json --silent
+archinstall --config config.json
 
 # Verifica se a instalação foi bem-sucedida
 if [ $? -eq 0 ]; then
