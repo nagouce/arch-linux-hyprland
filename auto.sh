@@ -43,11 +43,31 @@ cat > config.json << EOL
     "systemctl enable NetworkManager",
     "systemctl enable tlp",
     "systemctl enable sshd",
-    "gpasswd -a \$USER wheel"
+    "gpasswd -a \$USER wheel",
+    "echo 'pt_BR.UTF-8 UTF-8' > /etc/locale.gen",
+    "locale-gen",
+    "echo 'LANG=pt_BR.UTF-8' > /etc/locale.conf",
+    "echo 'KEYMAP=br-abnt2' > /etc/vconsole.conf"
   ],
   "disk-config": {
-    "layout": "auto",
-    "filesystem": "ext4"
+    "layout": {
+      "partitions": [
+        {
+          "mountpoint": "/",
+          "filesystem": "btrfs",
+          "size": "50%"
+        },
+        {
+          "mountpoint": "/home",
+          "filesystem": "btrfs",
+          "size": "45%"
+        },
+        {
+          "type": "swap",
+          "size": "4GB"
+        }
+      ]
+    }
   },
   "hostname": "arch-notebook",
   "kernels": ["linux-zen"],
@@ -140,7 +160,7 @@ cat > config.json << EOL
 EOL
 
 # Executa o archinstall com a configuração
-archinstall --config config.json
+archinstall --config config.json --silent
 
 # Verifica se a instalação foi bem-sucedida
 if [ $? -eq 0 ]; then
