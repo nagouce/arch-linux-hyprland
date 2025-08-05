@@ -1,29 +1,33 @@
 #!/bin/bash
 
-# Script para configurar Arch Linux com Hyprland
+# Script para configurar Arch Linux com Hyprland usando yay
 
 # Verifica se está sendo executado como root
 if [[ $EUID -ne 0 ]]; then
-   echo "Execute este script com sudo."
-   exit 1
+    echo "Execute este script com sudo."
+    exit 1
 fi
 
+# Cria um arquivo de log
+LOGFILE="/home/$SUDO_USER/setup-arch-hyprland.log"
+echo "Iniciando configuração: $(date)" > $LOGFILE
+
 # Verifica conexão com a internet
-echo "Verificando conexão com a internet..."
+echo "Verificando conexão com a internet..." | tee -a $LOGFILE
 if ! ping -c 1 google.com &> /dev/null; then
-    echo "Sem conexão com a internet. Ativando NetworkManager..."
-    systemctl start NetworkManager
-    systemctl enable NetworkManager
+    echo "Sem conexão com a internet. Ativando NetworkManager..." | tee -a $LOGFILE
+    systemctl start NetworkManager >> $LOGFILE 2>&1
+    systemctl enable NetworkManager >> $LOGFILE 2>&1
     sleep 5
     if ! ping -c 1 google.com &> /dev/null; then
-        echo "Erro: Sem conexão com a internet. Verifique sua rede e tente novamente."
+        echo "Erro: Sem conexão com a internet. Verifique sua rede e tente novamente." | tee -a $LOGFILE
         exit 1
     fi
 fi
 
 # Atualiza o sistema
-echo "Atualizando o sistema..."
-pacman -Syu --noconfirm || { echo "Erro ao atualizar o sistema"; exit 1; }
+echo "Atualizando o sistema..." | tee -a $LOGFILE
+pacman -Syu --noconfirm >> $LOGFILE 2>&1 || { echo "Erro ao atualizar o sistema" | tee -a $LOGFILE; exit 1; }
 
 # Pacotes dos repositórios oficiais
 PACOTES_OFICIAIS=(
@@ -43,31 +47,15 @@ PACOTES_AUR=(
 )
 
 # Instala pacotes oficiais
-echo "Instalando pacotes oficiais..."
-pacman -S --noconfirm --needed "${PACOTES_OFICIAIS[@]}" || { echo "Erro ao instalar pacotes oficiais"; exit 1; }
-
-# Instala yay para pacotes do AUR
-echo "Instalando yay..."
-rm -rf /tmp/yay
-if ! su - $SUDO_USER -c "git clone https://aur.archlinux.org/yay.git /tmp/yay"; then
-    echo "Erro ao clonar yay. Verifique a conexão com a internet e o git."
-    exit 1
-fi
-cd /tmp/yay
-if [ ! -f PKGBUILD ]; then
-    echo "Erro: Arquivo PKGBUILD não encontrado em /tmp/yay."
-    exit 1
-fi
-su - $SUDO_USER -c "makepkg -si --noconfirm" || { echo "Erro ao instalar yay"; exit 1; }
-cd -
-rm -rf /tmp/yay
+echo "Instalando pacotes oficiais..." | tee -a $LOGFILE
+pacman -S --noconfirm --needed "${PACOTES_OFICIAIS[@]}" >> $LOGFILE 2>&1 || { echo "Erro ao instalar pacotes oficiais" | tee -a $LOGFILE; exit 1; }
 
 # Instala pacotes do AUR
-echo "Instalando pacotes do AUR..."
-su - $SUDO_USER -c "yay -S --noconfirm ${PACOTES_AUR[*]}" || echo "Aviso: Alguns pacotes do AUR podem ter falhado"
+echo "Instalando pacotes do AUR..." | tee -a $LOGFILE
+su - $SUDO_USER -c "yay -S --noconfirm ${PACOTES_AUR[*]}" >> $LOGFILE 2>&1 || echo "Aviso: Alguns pacotes do AUR podem ter falhado" | tee -a $LOGFILE
 
 # Configura o Hyprland
-echo "Configurando o Hyprland..."
+echo "Configurando o Hyprland..." | tee -a $LOGFILE
 mkdir -p /home/$SUDO_USER/.config/hypr
 cat << EOF > /home/$SUDO_USER/.config/hypr/hyprland.conf
 # Configurações de entrada
@@ -103,7 +91,7 @@ EOF
 chown $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.config/hypr /home/$SUDO_USER/.config/hypr/hyprland.conf
 
 # Configura a waybar
-echo "Configurando a waybar..."
+echo "Configurando a waybar..." | tee -a $LOGFILE
 mkdir -p /home/$SUDO_USER/.config/waybar
 cat << EOF > /home/$SUDO_USER/.config/waybar/config
 {
@@ -131,8 +119,8 @@ EOF
 chown $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.config/waybar /home/$SUDO_USER/.config/waybar/*
 
 # Configura o sddm
-echo "Configurando o sddm..."
-pacman -S --noconfirm sddm || { echo "Erro ao instalar sddm"; exit 1; }
+echo "Configurando o sddm..." | tee -a $LOGFILE
+pacman -S --noconfirm sddm >> $LOGFILE 2>&1 || { echo "Erro ao instalar sddm" | tee -a $LOGFILE; exit 1; }
 mkdir -p /usr/share/wayland-sessions
 cat << EOF > /usr/share/wayland-sessions/hyprland.desktop
 [Desktop Entry]
@@ -141,28 +129,28 @@ Comment=A dynamic tiling Wayland compositor
 Exec=Hyprland
 Type=Application
 EOF
-systemctl enable sddm || { echo "Erro ao habilitar sddm"; exit 1; }
+systemctl enable sddm >> $LOGFILE 2>&1 || { echo "Erro ao habilitar sddm" | tee -a $LOGFILE; exit 1; }
 
 # Habilita serviços
-echo "Habilitando serviços..."
-systemctl enable NetworkManager
-systemctl start NetworkManager
-systemctl enable bluetooth
-systemctl start bluetooth
-systemctl enable docker
-systemctl enable mariadb
-systemctl enable postgresql
-systemctl enable nginx
-systemctl enable tlp
+echo "Habilitando serviços..." | tee -a $LOGFILE
+systemctl enable NetworkManager >> $LOGFILE 2>&1
+systemctl start NetworkManager >> $LOGFILE 2>&1
+systemctl enable bluetooth >> $LOGFILE 2>&1
+systemctl start bluetooth >> $LOGFILE 2>&1
+systemctl enable docker >> $LOGFILE 2>&1
+systemctl enable mariadb >> $LOGFILE 2>&1
+systemctl enable postgresql >> $LOGFILE 2>&1
+systemctl enable nginx >> $LOGFILE 2>&1
+systemctl enable tlp >> $LOGFILE 2>&1
 
 # Configura variáveis de ambiente
-echo "Configurando variáveis de ambiente..."
+echo "Configurando variáveis de ambiente..." | tee -a $LOGFILE
 echo "export XDG_SESSION_TYPE=wayland" >> /home/$SUDO_USER/.bash_profile
 echo "export XDG_SESSION_DESKTOP=Hyprland" >> /home/$SUDO_USER/.bash_profile
 echo "export XDG_CURRENT_DESKTOP=Hyprland" >> /home/$SUDO_USER/.bash_profile
 chown $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.bash_profile
 
 # Mensagem final
-echo "Configuração concluída! Reiniciando em 5 segundos..."
+echo "Configuração concluída! Log salvo em $LOGFILE. Reiniciando em 5 segundos..." | tee -a $LOGFILE
 sleep 5
 reboot
