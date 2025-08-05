@@ -48,9 +48,17 @@ pacman -S --noconfirm --needed "${PACOTES_OFICIAIS[@]}" || { echo "Erro ao insta
 
 # Instala yay para pacotes do AUR
 echo "Instalando yay..."
-su - $SUDO_USER -c "git clone https://aur.archlinux.org/yay.git /tmp/yay" || { echo "Erro ao clonar yay"; exit 1; }
+rm -rf /tmp/yay
+if ! su - $SUDO_USER -c "git clone https://aur.archlinux.org/yay.git /tmp/yay"; then
+    echo "Erro ao clonar yay. Verifique a conexão com a internet e o git."
+    exit 1
+fi
 cd /tmp/yay
-su - $SUDO_USER -c "makepkg -si" || { echo "Erro ao instalar yay"; exit 1; }
+if [ ! -f PKGBUILD ]; then
+    echo "Erro: Arquivo PKGBUILD não encontrado em /tmp/yay."
+    exit 1
+fi
+su - $SUDO_USER -c "makepkg -si --noconfirm" || { echo "Erro ao instalar yay"; exit 1; }
 cd -
 rm -rf /tmp/yay
 
