@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script para configurar o Arch Linux com Hyprland e pacotes do pacotes.txt
+# Script para configurar Arch Linux com Hyprland
 
 # Verifica se está sendo executado como root
 if [[ $EUID -ne 0 ]]; then
@@ -8,101 +8,55 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+# Verifica conexão com a internet
+echo "Verificando conexão com a internet..."
+if ! ping -c 1 google.com &> /dev/null; then
+    echo "Sem conexão com a internet. Ativando NetworkManager..."
+    systemctl start NetworkManager
+    systemctl enable NetworkManager
+    sleep 5
+    if ! ping -c 1 google.com &> /dev/null; then
+        echo "Erro: Sem conexão com a internet. Verifique sua rede e tente novamente."
+        exit 1
+    fi
+fi
+
 # Atualiza o sistema
 echo "Atualizando o sistema..."
-pacman -Syu --noconfirm
+pacman -Syu --noconfirm || { echo "Erro ao atualizar o sistema"; exit 1; }
 
 # Pacotes dos repositórios oficiais
 PACOTES_OFICIAIS=(
-    bash-completion
-    bluez
-    bluez-utils
-    blueman
-    btop
-    clang
-    code
-    curl
-    dbeaver
-    docker
-    docker-compose
-    dunst
-    efibootmgr
-    feh
-    fwupd
-    gcc
-    git
-    go
-    htop
-    hyprland
-    intel-media-driver
-    intel-ucode
-    jupyterlab
-    kdeconnect
-    kitty
-    libinput
-    linux-zen
-    lm_sensors
-    make
-    mariadb
-    mesa
-    nano
-    neovim
-    network-manager-applet
-    networkmanager
-    nginx
-    nodejs
-    npm
-    noto-fonts
-    openssh
-    pavucontrol
-    pipewire
-    pipewire-alsa
-    pipewire-audio
-    pipewire-pulse
-    python
-    python-pip
-    redis
-    ripgrep
-    rofi
-    rust
-    sof-firmware
-    starship
-    thunar
-    thunar-archive-plugin
-    tlp
-    unzip
-    vulkan-intel
-    waybar
-    wget
-    wireplumber
-    xdg-desktop-portal
-    xdg-desktop-portal-hyprland
-    zip
+    bash-completion bluez bluez-utils blueman btop clang code curl dbeaver docker
+    docker-compose dunst efibootmgr feh fwupd gcc git go htop hyprland
+    intel-media-driver intel-ucode jupyterlab kdeconnect kitty libinput linux-zen
+    lm_sensors make mariadb mesa nano neovim network-manager-applet networkmanager
+    nginx nodejs npm noto-fonts openssh pavucontrol pipewire pipewire-alsa
+    pipewire-audio pipewire-pulse python python-pip redis ripgrep rofi rust
+    sof-firmware starship thunar thunar-archive-plugin tlp unzip vulkan-intel
+    waybar wget wireplumber xdg-desktop-portal xdg-desktop-portal-hyprland zip
 )
 
 # Pacotes do AUR
 PACOTES_AUR=(
-    mongodb
-    postman
-    poetry
-    virtualenv
+    mongodb postman poetry virtualenv
 )
 
 # Instala pacotes oficiais
 echo "Instalando pacotes oficiais..."
-pacman -S --noconfirm "${PACOTES_OFICIAIS[@]}"
+pacman -S --noconfirm --needed "${PACOTES_OFICIAIS[@]}" || { echo "Erro ao instalar pacotes oficiais"; exit 1; }
 
 # Instala yay para pacotes do AUR
 echo "Instalando yay..."
-su - $SUDO_USER -c "git clone https://aur.archlinux.org/yay.git /tmp/yay"
+su - $SUDO_USER -c "git clone https://aur.archlinux.org/yay.git /tmp/yay" || { echo "Erro ao clonar yay"; exit 1; }
 cd /tmp/yay
-su - $SUDO_USER -c "makepkg -si"
+su - $SUDO_USER -c "makepkg -si" || { echo "Erro ao instalar yay"; exit 1; }
 cd -
 rm -rf /tmp/yay
 
 # Instala pacotes do AUR
 echo "Instalando pacotes do AUR..."
-su - $SUDO_USER -c "yay -S --noconfirm ${PACOTES_AUR[*]}"
+su - $SUDO_USER -c "yay -S --noconfirm ${PACOTES_AUR[*]}" || echo "Aviso: Alguns pacotes do AUR podem ter falhado"
 
 # Configura o Hyprland
 echo "Configurando o Hyprland..."
@@ -170,7 +124,7 @@ chown $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.config/waybar /home/$SUDO_USER/.co
 
 # Configura o sddm
 echo "Configurando o sddm..."
-pacman -S --noconfirm sddm
+pacman -S --noconfirm sddm || { echo "Erro ao instalar sddm"; exit 1; }
 mkdir -p /usr/share/wayland-sessions
 cat << EOF > /usr/share/wayland-sessions/hyprland.desktop
 [Desktop Entry]
@@ -179,7 +133,7 @@ Comment=A dynamic tiling Wayland compositor
 Exec=Hyprland
 Type=Application
 EOF
-systemctl enable sddm
+systemctl enable sddm || { echo "Erro ao habilitar sddm"; exit 1; }
 
 # Habilita serviços
 echo "Habilitando serviços..."
